@@ -1,6 +1,6 @@
 # Blue Waves
 
-**Status: Production-Ready with YouTube Publishing ✅**
+**Status: Feature-complete — YouTube publishing verified, revenue unproven (see [PROFIT_AUDIT_2026-09-01.md](PROFIT_AUDIT_2026-09-01.md))**
 
 Governed, hybrid educational content studio that consumes Helix Codex as an external client.
 
@@ -24,6 +24,8 @@ Generated media is persisted locally and appears in the Cockpit content library 
 | **Scheduler** | ✅ Working | Recurring Mon/Wed/Fri, weekly caps |
 | **KOYOSHU/SHIPO** | ✅ Active | Metrics → Proposals → Approval → Learning |
 | **Tests** | ✅ Passing | 50/50 tests passing |
+
+> The ✅ marks above reflect **technical** functionality only. They do **not** mean the studio is generating stable income — it remains pre-revenue ($0), per `PROFIT_AUDIT_2026-09-01.md`. Production-scale revenue (and the SaaS-pivot GO/NO-GO) is still an open decision tracked in `DECISIONS.md`.
 
 ### Recent Verification (2026-09-02)
 
