@@ -8,6 +8,32 @@ from pathlib import Path
 from typing import Any
 
 
+# SSRF protection for OAuth token endpoint
+ALLOWED_TOKEN_HOSTS = {
+    "oauth2.googleapis.com",
+    "accounts.google.com",
+}
+
+def _validate_token_url(url: str) -> None:
+    """Validate URL to prevent SSRF for OAuth token endpoint."""
+    import urllib.parse
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise RuntimeError(f"Invalid URL scheme: {parsed.scheme}")
+    
+    hostname = parsed.hostname
+    if not hostname:
+        raise RuntimeError("URL missing hostname")
+    
+    # Allow localhost for local development
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return
+    
+    # Check against allowed hosts
+    if hostname not in ALLOWED_TOKEN_HOSTS:
+        raise RuntimeError(f"Host not allowed: {hostname}")
+
+
 class ConnectionStore:
     """Local credential metadata store. Secret values are never returned by the API."""
 
@@ -61,7 +87,9 @@ class ConnectionStore:
             raise ValueError("invalid YouTube OAuth state")
         payload = urllib.parse.urlencode({"code": code, "client_id": config["client_id"], "client_secret": config.get("client_secret", ""),
                                           "redirect_uri": config["redirect_uri"], "grant_type": "authorization_code"}).encode()
-        request = urllib.request.Request("https://oauth2.googleapis.com/token", data=payload, method="POST")
+        token_url = "https://oauth2.googleapis.com/token"
+        _validate_token_url(token_url)
+        request = urllib.request.Request(token_url, data=payload, method="POST")
         with urllib.request.urlopen(request, timeout=15) as response:
             token = json.loads(response.read().decode())
         return self.save("youtube", {"access_token": token.get("access_token"), "refresh_token": token.get("refresh_token"),

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
 from .config import Settings
 from .governance import Governance
-from .models import AssetStatus, ContentAsset, now_iso
+from .models import AssetStatus, ContentAsset, Language, now_iso
 from .providers import ProviderHealthMonitor, ProviderRegistry, ProviderUnavailable
 
 
@@ -40,7 +41,7 @@ class VideoEngine:
             tenant_id=self._settings.tenant_id,
             topic=topic,
             pillar="education",
-            language="en",
+            language=Language.EN,
             status=AssetStatus.PRODUCED,
         )
 

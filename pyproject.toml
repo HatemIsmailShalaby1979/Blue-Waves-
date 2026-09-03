@@ -7,7 +7,12 @@ name = "blue-waves"
 version = "0.2.0"
 description = "Multi-format content studio with autonomous generation and two-gate governance"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "google-api-python-client>=2.100",
+    "google-auth>=2.30",
+    "google-auth-oauthlib>=1.2",
+    "python-dotenv>=1.0",
+]
 
 [tool.ruff]
 line-length = 120

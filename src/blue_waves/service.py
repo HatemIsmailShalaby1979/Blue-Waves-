@@ -91,7 +91,13 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
             self._serve_media(path)
         elif path == "/oauth/youtube/callback":
             query = parse_qs(parsed.query)
-            self._json(200, self.application.youtube_oauth_callback(query.get("code", [""])[0], query.get("state", [""])[0]))
+            try:
+                result = self.application.youtube_oauth_callback(query.get("code", [""])[0], query.get("state", [""])[0])
+                self._json(200, result)
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            except Exception as e:
+                self._json(500, {"error": f"OAuth callback failed: {e}"})
         elif path == "/":
             self._serve_dashboard()
         else:

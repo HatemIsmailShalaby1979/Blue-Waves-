@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -41,6 +43,8 @@ class Settings:
     google_tts_credentials_path: str | None = None
     youtube_channel_id: str | None = None
     youtube_upload_enabled: bool = False
+    youtube_oauth_client_id: str | None = None
+    youtube_oauth_client_secret: str | None = None
     podcast_publish_enabled: bool = False
     music_publish_enabled: bool = False
     cockpit_host: str = "0.0.0.0"
@@ -61,6 +65,9 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        # Load .env file from project root (3 levels up from config.py: blue_waves -> src -> project_root)
+        load_dotenv(Path(__file__).parent.parent.parent / ".env")
+        
         def integer(name: str, default: int) -> int:
             raw = os.getenv(name)
             if raw is None or raw == "":
@@ -114,6 +121,8 @@ class Settings:
             google_tts_credentials_path=os.getenv("GOOGLE_TTS_CREDENTIALS_PATH") or None,
             youtube_channel_id=os.getenv("YOUTUBE_CHANNEL_ID") or None,
             youtube_upload_enabled=boolean("YOUTUBE_UPLOAD_ENABLED", False),
+            youtube_oauth_client_id=os.getenv("YOUTUBE_OAUTH_CLIENT_ID") or None,
+            youtube_oauth_client_secret=os.getenv("YOUTUBE_OAUTH_CLIENT_SECRET") or None,
             podcast_publish_enabled=boolean("PODCAST_PUBLISH_ENABLED", False),
             music_publish_enabled=boolean("MUSIC_PUBLISH_ENABLED", False),
             cockpit_host=os.getenv("COCKPIT_HOST", "0.0.0.0"),

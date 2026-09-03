@@ -38,8 +38,9 @@ def test_podcast_engine_generate():
     governance = Governance(Policy())
     engine = PodcastEngine(settings, governance)
     result = engine.generate(topic="test", script="Hello world", duration_seconds=60)
-    assert result.success is False
-    assert result.error is not None
+    # Edge-TTS is now available locally, so this should succeed
+    assert result.success is True
+    assert result.tts_provider_used == "edge_tts"
 
 
 def test_podcast_engine_generate_solo():
@@ -47,7 +48,9 @@ def test_podcast_engine_generate_solo():
     governance = Governance(Policy())
     engine = PodcastEngine(settings, governance)
     result = engine.generate_solo(topic="test", script="Hello world", duration_seconds=60)
-    assert result.success is False
+    # Edge-TTS is now available locally, so this should succeed
+    assert result.success is True
+    assert result.tts_provider_used == "edge_tts"
 
 
 def test_podcast_engine_generate_dialogue():
@@ -58,7 +61,9 @@ def test_podcast_engine_generate_dialogue():
         topic="test", host_script="Host says hello",
         guest_script="Guest says hi back", duration_seconds=60,
     )
-    assert result.success is False
+    # Edge-TTS is now available locally, so this should succeed
+    assert result.success is True
+    assert result.tts_provider_used == "edge_tts"
 
 
 def test_video_engine_generate():

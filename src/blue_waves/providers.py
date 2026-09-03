@@ -195,6 +195,64 @@ class ACEStepMusicProvider:
         raise ProviderUnavailable("ACE-Step requires ROCm GPU; use InMemoryMusicProvider for testing")
 
 
+ALLOWED_OPENAI_HOSTS = {
+    "api.openai.com",
+    "api.openrouter.ai",
+    "api.groq.com",
+    "integrate.api.nvidia.com",
+    "localhost",
+    "127.0.0.1",
+}
+
+ALLOWED_MEDIA_HOSTS = {
+    "api.suno.ai",
+    "cdn.suno.ai",
+    "api.klingai.com",
+    "api.seedance.com",
+    "api.kokoro.dev",
+    "localhost",
+    "127.0.0.1",
+}
+
+ALLOWED_OPENAI_HOSTS = {
+    "api.openai.com",
+    "api.openrouter.ai",
+    "api.groq.com",
+    "integrate.api.nvidia.com",
+    "localhost",
+    "127.0.0.1",
+}
+
+ALLOWED_MEDIA_HOSTS = {
+    "api.suno.ai",
+    "cdn.suno.ai",
+    "api.klingai.com",
+    "api.seedance.com",
+    "api.kokoro.dev",
+    "localhost",
+    "127.0.0.1",
+}
+
+def _validate_url(url: str, allowed_hosts: set[str] | None = None) -> None:
+    """Validate URL to prevent SSRF."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ProviderUnavailable(f"Invalid URL scheme: {parsed.scheme}")
+    
+    hostname = parsed.hostname
+    if not hostname:
+        raise ProviderUnavailable("URL missing hostname")
+    
+    # Allow localhost for local development
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return
+    
+    # Check against allowed hosts
+    hosts = allowed_hosts or ALLOWED_OPENAI_HOSTS
+    if hostname not in hosts:
+        raise ProviderUnavailable(f"Host not allowed: {hostname}")
+
+
 class SunoMusicProvider:
     """Suno API music generation (cloud)."""
 
@@ -207,7 +265,50 @@ class SunoMusicProvider:
                  genre: str = "pop", mood: str = "happy", **kwargs: Any) -> bytes:
         if not self.api_key:
             raise ProviderUnavailable("Suno API key not configured")
-        raise ProviderUnavailable("Suno API integration requires API key verification")
+        
+        import urllib.request
+        import json
+        
+        # Validate base_url to prevent SSRF
+        _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
+        
+        # Suno API structure (may vary - adjust based on actual API docs)
+        body = {
+            "prompt": prompt,
+            "lyrics": lyrics,
+            "duration": min(duration, 240),  # Suno max duration
+            "genre": genre,
+            "mood": mood,
+        }
+        payload = json.dumps(body).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/generate",
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            raise ProviderUnavailable(f"Suno API request failed: {exc}") from exc
+        
+        # Extract audio URL and download
+        audio_url = raw.get("audio_url") or raw.get("url")
+        if not audio_url:
+            raise ProviderUnavailable(f"Suno API returned no audio URL: {raw}")
+        
+        # Validate audio URL to prevent SSRF
+        _validate_url(audio_url, ALLOWED_MEDIA_HOSTS)
+        
+        try:
+            with urllib.request.urlopen(audio_url, timeout=60) as audio_resp:
+                return audio_resp.read()
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise ProviderUnavailable(f"Suno audio download failed: {exc}") from exc
 
 
 class KokoroTTSProvider:
@@ -229,7 +330,28 @@ class EdgeTTSProvider:
         self.name = "edge_tts"
 
     def generate(self, text: str, voice_id: str = "en-US-AriaNeural", **kwargs: Any) -> bytes:
-        raise ProviderUnavailable("Edge-TTS requires edge-tts binary")
+        import asyncio
+        from edge_tts import Communicate
+        
+        # Validate inputs
+        if not voice_id.replace("-", "").replace("_", "").isalnum():
+            raise ProviderUnavailable("Invalid voice_id")
+        if len(text) > 10000:
+            raise ProviderUnavailable("Text too long")
+        
+        fd, output_path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        
+        try:
+            asyncio.run(Communicate(text, voice_id).save(output_path))
+            return Path(output_path).read_bytes()
+        except Exception as exc:
+            raise ProviderUnavailable(f"Edge-TTS generation failed: {exc}") from exc
+        finally:
+            try:
+                os.unlink(output_path)
+            except FileNotFoundError:
+                pass
 
 
 class GoogleTTSProvider:

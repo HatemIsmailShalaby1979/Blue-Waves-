@@ -2,6 +2,40 @@
 
 All notable changes to Blue Waves will be documented in this file.
 
+## [0.2.1] - 2026-09-02
+
+### Fixed
+- YouTube OAuth: New client ID configured (`417279649263-kdbsc08ncvuc2sel78s9fdl3vlu4uri5`), test user added (`hatemismail2011@gmail.com`), end-to-end verified
+- YouTube Upload: End-to-end verified (video `NHXdNQzF5m0` → `https://www.youtube.com/watch?v=NHXdNQzF5m0`)
+- Video Engine: Fixed `language` field to use `Language.EN` enum instead of string
+- OAuth Callback: Added proper error handling with try/except for graceful failures
+- Config Loading: Fixed `.env` loading path resolution (3 levels up from config.py)
+
+### Added
+- Podcast RSS: iTunes-compatible RSS 2.0 feed generation (`generate_podcast_rss`)
+- YouTube Analytics: `fetch_youtube_analytics` + `sync_published_metrics` methods
+- Scheduler: Recurring schedule support (Mon/Wed/Fri default), weekly publish caps
+- Video Shorts: `create_short` + `create_shorts_from_longform` for YouTube Shorts automation
+- SEO Metadata: Auto-generated titles, descriptions, tags for YouTube uploads
+- Shorts Module: New `src/blue_waves/shorts.py` module for short-form video creation
+
+### Changed
+- Config: Added `youtube_oauth_client_id` and `youtube_oauth_client_secret` fields
+- Config: Added python-dotenv dependency for reliable `.env` loading
+- Video Engine: Language field now uses `Language.EN` enum
+- Auth: Cleared old connection store, restarted with clean OAuth state
+
+### Security
+- SSRF protection: `_validate_url` with allowlists for all external HTTP requests
+- Command injection prevention: Input validation + subprocess parameter lists (no shell=True)
+- OAuth state validation: Proper state parameter handling in callback
+
+### Verified (2026-09-02)
+- YouTube OAuth: Complete (new client ID, test user active, scopes: `youtube.upload`, `yt-analytics.readonly`)
+- End-to-end video publish: Verified (`NHXdNQzF5m0` → `https://www.youtube.com/watch?v=NHXdNQzF5m0`)
+- Podcast RSS: Valid iTunes-compatible RSS 2.0 with enclosures
+- All 50 tests passing
+
 ## [0.2.1] - 2026-09-01
 
 ### Fixed

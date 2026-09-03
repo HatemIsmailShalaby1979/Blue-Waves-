@@ -24,6 +24,7 @@ from .queue import ContentQueue
 from .scheduler import Scheduler
 from .video_engine import VideoEngine
 from .intelligence import MetacognitiveEngine, PerformanceMemory
+from .youtube_upload import YouTubeUploadService, create_youtube_service_from_oauth
 
 
 class BlueWavesApplication:
@@ -88,6 +89,8 @@ class BlueWavesApplication:
         self.metacognition = MetacognitiveEngine()
         self.music_assets: dict[str, MusicAsset] = {}
         self.podcast_assets: dict[str, PodcastAsset] = {}
+        self._youtube_service: YouTubeUploadService | None = None
+        self._init_youtube_service()
         self._load_persisted_assets()
         for event in self.store.latest_metrics():
             self.metacognition.restore_metric(event)
@@ -102,6 +105,30 @@ class BlueWavesApplication:
         for raw in self.store.latest_podcasts():
             asset = podcast_asset_from_dict(raw)
             self.podcast_assets[asset.asset_id] = asset
+
+    def _init_youtube_service(self) -> None:
+        """Initialize YouTube upload service from saved OAuth credentials."""
+        if not self.settings.youtube_upload_enabled:
+            return
+        youtube_conn = self.connections.get("youtube")
+        if not youtube_conn.get("access_token"):
+            return
+        try:
+            self._youtube_service = create_youtube_service_from_oauth(youtube_conn, self.settings.data_dir)
+        except Exception as exc:
+            # Log but don't fail initialization - upload will fail at publish time with clear error
+            self.ledger.append("youtube_init_failed", {"error": str(exc)}, self.settings.tenant_id, "LEO")
+
+    def _get_youtube_service(self) -> YouTubeUploadService:
+        """Get YouTube service, raising if not configured."""
+        if self._youtube_service is None:
+            self._init_youtube_service()
+        if self._youtube_service is None:
+            raise RuntimeError(
+                "YouTube upload not configured. "
+                "Enable YOUTUBE_UPLOAD_ENABLED and complete OAuth flow in Cockpit."
+            )
+        return self._youtube_service
 
     def register(self) -> dict[str, Any]:
         response = self.codex.register_blue_waves()
@@ -172,6 +199,32 @@ class BlueWavesApplication:
     def publish(self, asset: ContentAsset, channel: str, weekly_count: int = 0) -> dict[str, Any]:
         self.governance.assert_publishable(asset, channel, weekly_count)
         self.governance.assert_action_allowed("publish")
+        
+        # Actually upload to YouTube if channel is youtube and upload is enabled
+        youtube_result = None
+        if channel == "youtube" and self.settings.youtube_upload_enabled:
+            youtube_service = self._get_youtube_service()
+            video_path = Path(asset.media_manifest.get("video_path", ""))
+            if video_path.exists():
+                # Generate SEO metadata
+                seo = youtube_service.generate_seo_metadata(
+                    content_type="video",
+                    topic=asset.topic,
+                    pillar=asset.pillar,
+                    language=asset.language.value,
+                )
+                youtube_result = youtube_service.upload_video(
+                    video_path=video_path,
+                    title=seo["title"],
+                    description=seo["description"],
+                    tags=seo["tags"],
+                    category_id=seo["category_id"],
+                    privacy_status="private",  # Start private, owner can change
+                )
+                asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
+                asset.media_manifest["youtube_url"] = youtube_result["video_url"]
+                asset.media_manifest["seo_metadata"] = seo
+        
         asset.transition(AssetStatus.PUBLISHED)
         publication = {
             "publication_id": f"pub-{uuid.uuid4().hex[:10]}",
@@ -181,6 +234,7 @@ class BlueWavesApplication:
             "language": asset.language.value,
             "published_at": now_iso(),
             "approval_id": asset.approval_id,
+            "youtube": youtube_result,
         }
         self.store.save_asset(asset)
         self.ledger.append("published", publication, asset.tenant_id, "LEO")
@@ -220,6 +274,93 @@ class BlueWavesApplication:
         self.metacognition.add_metric(payload)
         self.ledger.append("metric_recorded", {**payload, "topic": topic}, tenant, "JOE")
         return payload
+
+    def fetch_youtube_analytics(self, video_id: str) -> dict[str, Any]:
+        """Fetch analytics from YouTube Data API for a published video."""
+        if not self.settings.youtube_upload_enabled:
+            raise RuntimeError("YouTube upload not enabled")
+        youtube_service = self._get_youtube_service()
+        return youtube_service.get_video_analytics(video_id)
+
+    def sync_published_metrics(self, asset_id: str) -> dict[str, Any]:
+        """Fetch and record YouTube analytics for a published asset."""
+        if asset_id in self.assets:
+            asset = self.assets[asset_id]
+        elif asset_id in self.music_assets:
+            asset = self.music_assets[asset_id]
+        elif asset_id in self.podcast_assets:
+            asset = self.podcast_assets[asset_id]
+        else:
+            raise KeyError(f"unknown asset: {asset_id}")
+        
+        youtube_id = asset.media_manifest.get("youtube_video_id")
+        if not youtube_id:
+            raise ValueError(f"Asset {asset_id} has no YouTube video ID")
+        
+        analytics = self.fetch_youtube_analytics(youtube_id)
+        for metric_name, value in analytics.items():
+            self.record_media_metric(asset_id, "youtube", metric_name, float(value), source="youtube_api")
+        
+        return analytics
+
+    def generate_podcast_rss(self, base_url: str = "") -> str:
+        """Generate RSS 2.0 feed for published podcasts.
+        
+        Supports both YouTube-hosted podcasts and local audio files.
+        For local files, provides a placeholder URL that can be replaced when hosted.
+        """
+        import xml.etree.ElementTree as ET
+        from datetime import datetime
+        
+        rss = ET.Element("rss", version="2.0", xmlns_itunes="http://www.itunes.com/dtds/podcast-1.0.dtd")
+        channel = ET.SubElement(rss, "channel")
+        
+        ET.SubElement(channel, "title").text = "Blue Waves Podcasts"
+        ET.SubElement(channel, "link").text = base_url or "https://bluewaves.example.com"
+        ET.SubElement(channel, "description").text = "Educational podcasts from Blue Waves"
+        ET.SubElement(channel, "language").text = "en"
+        ET.SubElement(channel, "lastBuildDate").text = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        
+        # iTunes specific tags
+        itunes_owner = ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}owner")
+        ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}name").text = "Blue Waves"
+        ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}email").text = "podcasts@bluewaves.example.com"
+        ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}category", text="Education")
+        ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}explicit").text = "false"
+        
+        # Add podcast items
+        for asset in sorted(self.podcast_assets.values(), key=lambda a: a.created_at, reverse=True):
+            if asset.status != AssetStatus.PUBLISHED:
+                continue
+            
+            # Determine audio URL - prefer YouTube, fallback to local path
+            youtube_id = asset.media_manifest.get("youtube_video_id")
+            if youtube_id:
+                audio_url = f"https://www.youtube.com/watch?v={youtube_id}"
+                audio_type = "audio/mpeg"
+            elif asset.audio_path:
+                # For local files, use a placeholder that should be replaced when hosted
+                audio_url = f"{base_url.rstrip('/')}/audio/{asset.asset_id}.wav" if base_url else f"file://{asset.audio_path}"
+                audio_type = "audio/wav"
+            else:
+                continue  # Skip if no audio source
+            
+            item = ET.SubElement(channel, "item")
+            ET.SubElement(item, "title").text = asset.title
+            ET.SubElement(item, "description").text = f"Podcast about {asset.topic}"
+            ET.SubElement(item, "pubDate").text = datetime.fromisoformat(asset.created_at.replace('Z', '+00:00')).strftime("%a, %d %b %Y %H:%M:%S GMT")
+            ET.SubElement(item, "guid").text = asset.asset_id
+            
+            # Enclosure for audio
+            ET.SubElement(item, "enclosure", url=audio_url, type=audio_type, length="0")
+            
+            # iTunes tags
+            ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}duration").text = str(asset.duration_target_seconds)
+            ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}episodeType").text = "full"
+        
+        # Pretty print
+        ET.indent(rss, space="  ")
+        return ET.tostring(rss, encoding="unicode", xml_declaration=True)
 
     def reject_asset(self, asset: ContentAsset, reason: str = "owner rejected") -> dict[str, Any]:
         if asset.status is not AssetStatus.AWAITING_OWNER:
@@ -409,20 +550,74 @@ class BlueWavesApplication:
         if not asset:
             raise KeyError(f"unknown music asset: {asset_id}")
         self.governance.assert_publishable_music(asset, self.queue.get_weekly_count("music"))
+        
+        youtube_result = None
+        if channel == "youtube" and self.settings.youtube_upload_enabled:
+            youtube_service = self._get_youtube_service()
+            audio_path = Path(asset.audio_path or "")
+            if audio_path.exists():
+                # Generate SEO metadata for music
+                seo = youtube_service.generate_seo_metadata(
+                    content_type="music",
+                    topic=asset.title,
+                    pillar=asset.genre,
+                    language=asset.language,
+                    extra_tags=[asset.genre, asset.mood, "background music", "royalty free"],
+                )
+                youtube_result = youtube_service.upload_video(
+                    video_path=audio_path,
+                    title=seo["title"],
+                    description=seo["description"],
+                    tags=seo["tags"],
+                    category_id=seo["category_id"],
+                    privacy_status="private",
+                )
+                asset.media_manifest = asset.media_manifest or {}
+                asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
+                asset.media_manifest["youtube_url"] = youtube_result["video_url"]
+                asset.media_manifest["seo_metadata"] = seo
+        
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_music(asset)
-        self.ledger.append("music_published", {"asset_id": asset_id, "channel": channel}, self.settings.tenant_id, "LEO")
-        return {"asset_id": asset_id, "channel": channel, "status": "published"}
+        self.ledger.append("music_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")
+        return {"asset_id": asset_id, "channel": channel, "status": "published", "youtube": youtube_result}
 
     def publish_podcast(self, asset_id: str, channel: str = "youtube") -> dict[str, Any]:
         asset = self.podcast_assets.get(asset_id)
         if not asset:
             raise KeyError(f"unknown podcast asset: {asset_id}")
         self.governance.assert_publishable_podcast(asset, self.queue.get_weekly_count("podcast"))
+        
+        youtube_result = None
+        if channel == "youtube" and self.settings.youtube_upload_enabled:
+            youtube_service = self._get_youtube_service()
+            audio_path = Path(asset.audio_path or "")
+            if audio_path.exists():
+                # Generate SEO metadata for podcast
+                seo = youtube_service.generate_seo_metadata(
+                    content_type="podcast",
+                    topic=asset.topic,
+                    pillar=asset.format,
+                    language=asset.language,
+                    extra_tags=[asset.format, "podcast", "education", "audio"],
+                )
+                youtube_result = youtube_service.upload_video(
+                    video_path=audio_path,
+                    title=seo["title"],
+                    description=seo["description"],
+                    tags=seo["tags"],
+                    category_id=seo["category_id"],
+                    privacy_status="private",
+                )
+                asset.media_manifest = asset.media_manifest or {}
+                asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
+                asset.media_manifest["youtube_url"] = youtube_result["video_url"]
+                asset.media_manifest["seo_metadata"] = seo
+        
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_podcast(asset)
-        self.ledger.append("podcast_published", {"asset_id": asset_id, "channel": channel}, self.settings.tenant_id, "LEO")
-        return {"asset_id": asset_id, "channel": channel, "status": "published"}
+        self.ledger.append("podcast_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")
+        return {"asset_id": asset_id, "channel": channel, "status": "published", "youtube": youtube_result}
 
     def get_queue_status(self) -> dict[str, Any]:
         return {

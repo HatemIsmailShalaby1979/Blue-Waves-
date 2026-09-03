@@ -47,6 +47,7 @@ class MusicEngine:
             lyrics=lyrics,
             provider=preferred_provider,
             quality=quality,
+            media_manifest={},
         )
         asset.transition(AssetStatus.COMPOSING)
 

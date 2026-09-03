@@ -48,6 +48,7 @@ class PodcastEngine:
             duration_target_seconds=duration_seconds,
             format=format,
             script=script,
+            media_manifest={},
         )
         asset.transition(AssetStatus.SCRIPTED)
 
@@ -55,6 +56,7 @@ class PodcastEngine:
         try:
             host_audio = tts_provider.generate(text=script, voice_id=host_voice)
             asset.transition(AssetStatus.VOICE_RECORDING)
+            asset.tts_provider = tts_provider.name
             self._health.record_success(tts_provider.name)
         except (ProviderUnavailable, Exception) as exc:
             self._health.record_failure(tts_provider.name, str(exc))

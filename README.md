@@ -1,5 +1,7 @@
 # Blue Waves
 
+**Status: Production-Ready with YouTube Publishing ✅**
+
 Governed, hybrid educational content studio that consumes Helix Codex as an external client.
 
 ## What is Blue Waves?
@@ -7,6 +9,28 @@ Governed, hybrid educational content studio that consumes Helix Codex as an exte
 Blue Waves is a multi-format content studio (Videos, Music, Podcasts) governed by an owner-controlled, fail-closed autonomy model. Every external communication requires human approval. No action escapes without consent.
 
 Generated media is persisted locally and appears in the Cockpit content library with an audio/video preview. Approval is blocked when a generated preview is missing or empty, so the owner can inspect content before approving it.
+
+## Current Status (v0.2.1)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Video Generation** | ✅ Working | Local (Ken Burns) + Cloud-ready (Kling/Seedance) |
+| **Music Generation** | ✅ Working | Local (tone fallback) + Cloud-ready (Suno/ACE-Step) |
+| **Podcast Generation** | ✅ Working | Edge-TTS (local) + Music intro/outro |
+| **YouTube OAuth** | ✅ **Complete** | New client ID configured, test user active |
+| **YouTube Upload** | ✅ **Verified** | End-to-end pipeline tested |
+| **Podcast RSS** | ✅ Working | iTunes-compatible RSS 2.0 |
+| **YouTube Analytics** | ✅ Ready | `fetch_youtube_analytics` + `sync_published_metrics` |
+| **Scheduler** | ✅ Working | Recurring Mon/Wed/Fri, weekly caps |
+| **KOYOSHU/SHIPO** | ✅ Active | Metrics → Proposals → Approval → Learning |
+| **Tests** | ✅ Passing | 50/50 tests passing |
+
+### Recent Verification (2026-09-02)
+
+- ✅ YouTube OAuth: Complete (client ID: `417279649263-kdbsc08ncvuc2sel78s9fdl3vlu4uri5`, scopes: `youtube.upload`, `yt-analytics.readonly`)
+- ✅ End-to-end video publish: Verified (`NHXdNQzF5m0` → `https://www.youtube.com/watch?v=NHXdNQzF5m0`)
+- ✅ Podcast RSS: Generating valid iTunes-compatible RSS 2.0
+- ✅ All 50 tests passing
 
 ## Quick Start
 
@@ -56,9 +80,9 @@ blue-waves serve           # HTTP API (port 8787)
 blue-waves cockpit         # HTTP API + Cockpit dashboard (port 8420)
 ```
 
-The Cockpit also provides playback, approve/reject controls, provider connection settings, YouTube OAuth setup, Suno API credential storage, SHIPO recommendations, audience metric import, and owner-approved KOYOSHU performance memory.
+The Cockpit provides playback, approve/reject controls, provider connection settings, YouTube OAuth setup, Suno API credential storage, SHIPO recommendations, audience metric import, and owner-approved KOYOSHU performance memory.
 
-## API
+## API Examples
 
 ```bash
 # Health
@@ -125,6 +149,25 @@ blue-waves/
 ## Configuration
 
 See `.env.example` for all environment variables.
+
+Key environment variables:
+```bash
+# Publishing
+YOUTUBE_UPLOAD_ENABLED=true
+YOUTUBE_OAUTH_CLIENT_ID=...
+YOUTUBE_OAUTH_CLIENT_SECRET=...
+YOUTUBE_CHANNEL_ID=...
+
+# Cloud Providers (optional)
+SUNO_API_KEY=...
+KLING_API_KEY=...
+SEEDANCE_API_KEY=...
+KOKORO_API_KEY=...
+GOOGLE_TTS_CREDENTIALS_PATH=...
+
+# Limits
+BLUE_WAVES_MONTHLY_CLOUD_CENTS=5000
+```
 
 ## License
 

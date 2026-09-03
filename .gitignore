@@ -7,3 +7,6 @@ data/*
 !data/.gitkeep
 .env
 .env.local
+.mimosa/
+.v2c/
+.video_agent/

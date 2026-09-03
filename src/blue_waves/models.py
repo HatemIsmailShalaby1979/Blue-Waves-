@@ -248,6 +248,7 @@ class MusicAsset:
     lyrics: str = ""
     audio_path: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    media_manifest: dict[str, Any] = field(default_factory=dict)
     provider: str = "ace_step"
     quality: str = "high"
     created_by: str = "BELAL"
@@ -319,6 +320,7 @@ class PodcastAsset:
     music_intro_path: str | None = None
     music_outro_path: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    media_manifest: dict[str, Any] = field(default_factory=dict)
     tts_provider: str = "kokoro"
     music_provider: str = "ace_step"
     created_by: str = "ZACK"
