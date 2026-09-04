@@ -157,7 +157,8 @@ class VideoUseEditor:
             f"Content-Type: audio/wav\r\n\r\n"
         ).encode() + audio_bytes + f"\r\n--{boundary}\r\n".encode()
 
-        req = urllib.request.Request(
+        from .providers import _api_request
+        req = _api_request(
             f"{self._elevenlabs_base}/speech-to-text",
             data=body,
             headers={

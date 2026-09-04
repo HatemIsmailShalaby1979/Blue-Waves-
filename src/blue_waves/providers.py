@@ -157,7 +157,7 @@ class OpenAICompatibleProvider:
             "temperature": 0.2,
         }
         payload = json.dumps(body).encode("utf-8")
-        request = urllib.request.Request(
+        request = _api_request(
             f"{self.base_url}/chat/completions",
             data=payload,
             headers={
@@ -167,7 +167,7 @@ class OpenAICompatibleProvider:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=5) as response:
+            with urllib.request.urlopen(request, timeout=60) as response:
                 raw = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             raise ProviderUnavailable(f"provider {self.name} request failed: {exc}") from exc
@@ -262,6 +262,32 @@ ALLOWED_MEDIA_HOSTS = {
     "127.0.0.1",
 }
 
+# Cloudflare-fronted APIs (Groq, Cerebras, aimlapi, …) reject Python-urllib's
+# default User-Agent with error 1010. Identify as a real client everywhere.
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0 Safari/537.36 BlueWaves/0.3")
+
+
+def _api_request(url: str, data: bytes | None = None,
+                 headers: dict[str, str] | None = None,
+                 method: str = "GET") -> urllib.request.Request:
+    """Build an outbound API request with a Cloudflare-safe User-Agent."""
+    merged = {"User-Agent": BROWSER_UA}
+    if headers:
+        merged.update(headers)
+    return urllib.request.Request(url, data=data, headers=merged, method=method)
+
+
+def _api_root(base_url: str) -> str:
+    """Strip a trailing API version (``/v1``) so versioned paths join correctly.
+
+    Without this, a base like ``https://api.aimlapi.com/v1`` combined with a
+    ``/v2/...`` path produces ``/v1/v2/...`` → HTTP 404.
+    """
+    import re
+    return re.sub(r"/v\d+/?$", "", (base_url or "").rstrip("/"))
+
+
 def _validate_url(url: str, allowed_hosts: set[str] | None = None) -> None:
     """Validate URL to prevent SSRF."""
     parsed = urllib.parse.urlparse(url)
@@ -312,8 +338,9 @@ class AimlapiMusicProvider:
             "music_length_ms": min(duration * 1000, 300000),
         }
         payload = json.dumps(body).encode("utf-8")
-        request = urllib.request.Request(
-            f"{self.base_url}/v2/generate/audio",
+        root = _api_root(self.base_url)
+        request = _api_request(
+            f"{root}/v2/generate/audio",
             data=payload,
             headers={
                 "Content-Type": "application/json",
@@ -324,10 +351,13 @@ class AimlapiMusicProvider:
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 raw = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            raise ProviderUnavailable(f"aimlapi submit failed ({exc.code}): {err_body[:300]}") from exc
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             raise ProviderUnavailable(f"aimlapi submit failed: {exc}") from exc
 
-        gen_id = raw.get("id")
+        gen_id = raw.get("generation_id") or raw.get("id")
         status = raw.get("status", "")
         if not gen_id:
             raise ProviderUnavailable(f"aimlapi returned no generation id: {raw}")
@@ -341,8 +371,8 @@ class AimlapiMusicProvider:
                 err = raw.get("error", {})
                 raise ProviderUnavailable(f"aimlapi generation error: {err.get('message', status)}")
             _time.sleep(10)
-            poll_req = urllib.request.Request(
-                f"{self.base_url}/v2/generate/audio?generation_id={gen_id}",
+            poll_req = _api_request(
+                f"{root}/v2/generate/audio?generation_id={gen_id}",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             )
             try:
@@ -362,7 +392,7 @@ class AimlapiMusicProvider:
             raise ProviderUnavailable(f"aimlapi returned no audio url: {raw}")
 
         try:
-            dl_req = urllib.request.Request(audio_url, headers={"Authorization": f"Bearer {self.api_key}"})
+            dl_req = _api_request(audio_url, headers={"Authorization": f"Bearer {self.api_key}"})
             with urllib.request.urlopen(dl_req, timeout=120) as audio_resp:
                 return audio_resp.read()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -443,7 +473,7 @@ class KokoroTTSProvider:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        req = urllib.request.Request(
+        req = _api_request(
             f"{self.base_url}/audio/speech",
             data=body,
             headers=headers,
@@ -549,7 +579,7 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
     import json
     import time as _time
 
-    UA = "BlueWaves/0.3 (content-studio; +https://github.com/blue-waves)"
+    root = _api_root(base_url)
 
     body = {
         "model": model,
@@ -558,13 +588,12 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
         "aspect_ratio": aspect_ratio,
     }
     payload = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(
-        f"{base_url}/v2/video/generations",
+    request = _api_request(
+        f"{root}/v2/video/generations",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "User-Agent": UA,
         },
         method="POST",
     )
@@ -577,7 +606,7 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
     except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
         raise ProviderUnavailable(f"aimlapi video submit failed: {exc}") from exc
 
-    gen_id = raw.get("id")
+    gen_id = raw.get("generation_id") or raw.get("id")
     status = raw.get("status", "")
     if not gen_id:
         raise ProviderUnavailable(f"aimlapi returned no generation id: {raw}")
@@ -591,9 +620,9 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
             err = raw.get("error", {})
             raise ProviderUnavailable(f"aimlapi video error: {err.get('message', status)}")
         _time.sleep(15)
-        poll_req = urllib.request.Request(
-            f"{base_url}/v2/video/generations?generation_id={gen_id}",
-            headers={"Authorization": f"Bearer {api_key}", "User-Agent": UA, "Content-Type": "application/json"},
+        poll_req = _api_request(
+            f"{root}/v2/video/generations?generation_id={gen_id}",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         )
         try:
             with urllib.request.urlopen(poll_req, timeout=30) as resp:
@@ -611,7 +640,7 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
         raise ProviderUnavailable(f"aimlapi returned no video url: {raw}")
 
     try:
-        dl_req = urllib.request.Request(video_url, headers={"User-Agent": UA})
+        dl_req = _api_request(video_url)
         with urllib.request.urlopen(dl_req, timeout=120) as video_resp:
             return video_resp.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -959,7 +988,7 @@ class KenBurnsProvider:
             })
             url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(img_prompt)}?{query}"
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "BlueWaves/0.3"})
+                req = _api_request(url)
                 with urllib.request.urlopen(req, timeout=60) as resp:
                     data = resp.read()
             except Exception:
@@ -995,8 +1024,7 @@ class KenBurnsProvider:
                 if len(images) >= count:
                     break
                 try:
-                    req = urllib.request.Request(url_tpl)
-                    req.add_header("User-Agent", "BlueWaves/0.3")
+                    req = _api_request(url_tpl)
                     with urllib.request.urlopen(req, timeout=20) as resp:
                         data = resp.read()
                         if len(data) > 5000:
@@ -1400,7 +1428,7 @@ class SunoMusicProvider:
             "instrumental": not bool(lyrics),
         }).encode("utf-8")
 
-        req = urllib.request.Request(
+        req = _api_request(
             f"{self.base_url}/songs/generate",
             data=body,
             headers={
@@ -1430,7 +1458,7 @@ class SunoMusicProvider:
                 err = raw.get("error", {})
                 raise ProviderUnavailable(f"Suno generation error: {err.get('message', status)}")
             _time.sleep(8)
-            poll_req = urllib.request.Request(
+            poll_req = _api_request(
                 f"{self.base_url}/songs/{song_id}",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             )
@@ -1450,7 +1478,7 @@ class SunoMusicProvider:
             raise ProviderUnavailable(f"Suno returned no audio url: {raw}")
 
         try:
-            dl_req = urllib.request.Request(audio_url, headers={"Authorization": f"Bearer {self.api_key}"})
+            dl_req = _api_request(audio_url, headers={"Authorization": f"Bearer {self.api_key}"})
             with urllib.request.urlopen(dl_req, timeout=120) as audio_resp:
                 return audio_resp.read()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -1503,7 +1531,7 @@ class ElevenLabsTTSProvider:
             },
         }).encode("utf-8")
 
-        req = urllib.request.Request(
+        req = _api_request(
             f"{self.base_url}/text-to-speech/{voice_id}",
             data=body,
             headers={
