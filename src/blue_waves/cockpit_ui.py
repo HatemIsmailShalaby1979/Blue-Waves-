@@ -467,10 +467,11 @@ const PROVIDER_FIELDS = [
   ['nvidia_nim','NVIDIA NIM',['api_key','base_url','model']],
   ['cerebras','Cerebras',['api_key','base_url','model']],
   ['huggingface','HuggingFace',['api_key','base_url','model']],
-  ['suno','Suno (music)',['api_key']],
+  ['suno','Suno (music) — no public API key exists; leave empty, music routes via aimlapi',['api_key']],
   ['kling','Kling (video)',['api_key']],
   ['seedance','Seedance (video)',['api_key']],
-  ['kokoro','Kokoro (tts)',['api_key']],
+  ['kokoro','Kokoro (tts) — blank key + local base URL for Docker (e.g. http://localhost:8880/v1)',['api_key','base_url']],
+  ['elevenlabs','ElevenLabs (tts)',['api_key','base_url']],
   ['aimlapi','aimlapi (music)',['api_key']],
   ['kai','KAI.AI (music)',['api_key']],
 ];

@@ -880,25 +880,70 @@ def _top_up(turns: list[tuple[str, str]], topic: str, pack: dict[str, Any],
     return out
 
 
+import re as _re
+
+
+_LABEL_RE = _re.compile(r"\[HOST\]|\[GUEST\]|HOST\s*:|GUEST\s*:", _re.IGNORECASE)
+
+
+def _strip_speaker_label(line: str) -> tuple[str | None, str]:
+    """Split a leading speaker label off a script line.
+
+    Accepts ``[HOST]``/``[GUEST]`` markers as well as plain ``Host:``/``Guest:``
+    prefixes (any capitalisation). Returns (speaker, remainder) where speaker
+    is "host"/"guest"/None. Labels must be stripped because anything left in
+    the text is spoken aloud by the TTS voice.
+    """
+    match = _LABEL_RE.match(line.strip())
+    if not match:
+        return None, line.strip()
+    label = match.group(0).upper()
+    speaker = "host" if "HOST" in label else "guest"
+    return speaker, line.strip()[match.end():].strip()
+
+
+def _split_line_turns(line: str, current: str) -> list[tuple[str, str]]:
+    """Split one script line into (speaker, text) turns on every label.
+
+    Handles both multi-line scripts (one label per line) and single-line
+    scripts (``Host: ... Guest: ...``), so speaker names are never spoken.
+    """
+    turns: list[tuple[str, str]] = []
+    buffer = ""
+    pos = 0
+    speaker = current
+    for match in _LABEL_RE.finditer(line):
+        chunk = line[pos:match.start()].strip()
+        if chunk:
+            buffer = f"{buffer} {chunk}".strip()
+        if buffer:
+            turns.append((speaker, buffer))
+            buffer = ""
+        label = match.group(0).upper()
+        speaker = "host" if "HOST" in label else "guest"
+        pos = match.end()
+    tail = line[pos:].strip()
+    if tail:
+        buffer = f"{buffer} {tail}".strip()
+    if buffer:
+        turns.append((speaker, buffer))
+    return turns
+
+
 def _parse_script(script: str) -> list[tuple[str, str]]:
     turns: list[tuple[str, str]] = []
     current = "host"
     buffer: list[str] = []
     for line in script.splitlines():
-        marker = line.strip().upper()
-        if marker.startswith("[HOST]"):
+        if _LABEL_RE.search(line):
             if buffer:
                 turns.append((current, " ".join(buffer).strip()))
                 buffer = []
-            current = "host"
-            line = line[line.upper().find("[HOST]") + len("[HOST]"):]
-        elif marker.startswith("[GUEST]"):
-            if buffer:
-                turns.append((current, " ".join(buffer).strip()))
-                buffer = []
-            current = "guest"
-            line = line[line.upper().find("[GUEST]") + len("[GUEST]"):]
-        if line.strip():
+            for speaker, text in _split_line_turns(line, current):
+                if text:
+                    turns.append((speaker, text))
+                    current = speaker
+        elif line.strip():
             buffer.append(line.strip())
     if buffer:
         turns.append((current, " ".join(buffer).strip()))

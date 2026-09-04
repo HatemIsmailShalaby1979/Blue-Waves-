@@ -206,17 +206,18 @@ class PodcastEngine:
     def _dialogue_segments(script: str, format: str, host_voice: str, guest_voice: str | None) -> list[tuple[str, str]]:
         if format != "dialogue" or not guest_voice:
             return [(script, host_voice)]
+        from .dialogue import _strip_speaker_label
         host_parts: list[str] = []
         guest_parts: list[str] = []
         current = host_parts
         for line in script.splitlines():
-            marker = line.strip().upper()
-            if marker.startswith("[HOST]"):
+            speaker, remainder = _strip_speaker_label(line)
+            if speaker == "host":
                 current = host_parts
-                line = line[line.upper().find("[HOST]") + len("[HOST]"):]
-            elif marker.startswith("[GUEST]"):
+                line = remainder
+            elif speaker == "guest":
                 current = guest_parts
-                line = line[line.upper().find("[GUEST]") + len("[GUEST]"):]
+                line = remainder
             if line.strip():
                 current.append(line.strip())
         if not host_parts or not guest_parts:

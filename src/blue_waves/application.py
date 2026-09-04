@@ -1091,6 +1091,9 @@ class BlueWavesApplication:
                 settings_updates[f"{provider}_base_url"] = values["base_url"]
             if values.get("model"):
                 settings_updates[f"{provider}_model"] = values["model"]
+        if provider in {"kokoro", "elevenlabs", "suno", "kling", "seedance", "aimlapi", "kai"}:
+            if values.get("base_url"):
+                settings_updates[f"{provider}_base_url"] = values["base_url"]
         if provider == "youtube":
             if values.get("client_id"):
                 settings_updates["youtube_oauth_client_id"] = values["client_id"]

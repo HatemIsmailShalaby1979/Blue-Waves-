@@ -239,10 +239,13 @@ class ACEStepMusicProvider:
 ALLOWED_OPENAI_HOSTS = {
     "api.openai.com",
     "api.openrouter.ai",
+    "openrouter.ai",
     "api.groq.com",
     "integrate.api.nvidia.com",
     "api.cerebras.ai",
     "router.huggingface.co",
+    "huggingface.co",
+    "api-inference.huggingface.co",
     "localhost",
     "127.0.0.1",
 }
@@ -379,34 +382,71 @@ class KaiMusicProvider:
         raise ProviderUnavailable("KAI.AI API is unreachable — domain does not resolve")
 
 
-class KokoroTTSProvider:
-    """Kokoro TTS (local or API).
+def _is_local_url(url: str) -> bool:
+    """True when a base URL points at a self-hosted endpoint (no API key needed)."""
+    try:
+        return (urllib.parse.urlparse(url).hostname or "") in ("localhost", "127.0.0.1", "::1")
+    except Exception:
+        return False
 
-    If an API key is configured, calls the Kokoro API endpoint.
-    Without a key, falls through so the provider chain can use edge_tts instead.
+
+class KokoroTTSProvider:
+    """Kokoro TTS (self-hosted Docker or hosted API).
+
+    No account or API key is required when pointed at a local deployment, e.g.
+    the ``kokoro-fastapi-cpu`` Docker image exposing an OpenAI-compatible
+    endpoint::
+
+        docker run -p 8880:8880 --name kokoro-tts-cpu ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
+
+    with ``KOKORO_BASE_URL=http://localhost:8880/v1`` and a blank key
+    (``"not-needed"`` also works). A hosted endpoint still needs its API key.
+    Without either, raises so the provider chain falls through to edge_tts.
     """
+
+    # ElevenLabs voice IDs → Kokoro voices (host=Adam→am_adam, guest=Bella→af_bella).
+    ELEVENLABS_TO_KOKORO = {
+        "21m00Tcm4TlvDq8ikWAM": "am_adam",
+        "EXAVITQu4vr4xnSDxMaL": "af_bella",
+        "ErXwobaYiN019PkySvjV": "am_michael",
+        "VR6AayLTfiWG1GfLtjXk": "am_michael",
+        "AZnzlk1XvdvUvBbpVxZ1": "af_nicole",
+    }
+
+    # Native Kokoro voices (af_* female, am_* male, bf_*/bm_* British).
+    VOICES = (
+        "af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky",
+        "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george",
+    )
 
     def __init__(self, api_key: str | None = None, base_url: str = "https://api.kokoro.dev/v1") -> None:
         self.name = "kokoro"
-        self.api_key = api_key
+        self.api_key = (api_key or "").strip() or None
+        if self.api_key == "not-needed":
+            self.api_key = None
         self.base_url = base_url.rstrip("/")
 
     def generate(self, text: str, voice_id: str = "af_heart", **kwargs: Any) -> bytes:
-        if not self.api_key:
-            raise ProviderUnavailable("Kokoro TTS requires API key or local deployment")
+        local = _is_local_url(self.base_url)
+        if not self.api_key and not local:
+            raise ProviderUnavailable(
+                "Kokoro TTS needs an API key or a local deployment "
+                "(set KOKORO_BASE_URL to e.g. http://localhost:8880/v1)"
+            )
+        voice_id = self.ELEVENLABS_TO_KOKORO.get(voice_id, voice_id)
         _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
         body = json.dumps({
-            "model": "kokoro-82m",
+            "model": "kokoro",
             "input": text[:5000],
             "voice": voice_id,
         }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         req = urllib.request.Request(
             f"{self.base_url}/audio/speech",
             data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
+            headers=headers,
             method="POST",
         )
         try:
@@ -1340,7 +1380,12 @@ class SunoMusicProvider:
     def generate(self, prompt: str, lyrics: str = "", duration: int = 180,
                  genre: str = "pop", mood: str = "happy", **kwargs: Any) -> bytes:
         if not self.api_key:
-            raise ProviderUnavailable("Suno API key not configured")
+            # Suno offers no public API key (free quota lives in the web account
+            # and cannot be consumed here), so skip gracefully to aimlapi.
+            raise ProviderUnavailable(
+                "Suno has no API key configured (Suno offers no public API; "
+                "cloud music routes via aimlapi)"
+            )
         _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
 
         # Build tags from genre + mood for Suno's tag system
@@ -1510,8 +1555,10 @@ def configured_tts_providers(settings: Any) -> dict[str, Any]:
     providers: dict[str, Any] = {}
     if hasattr(settings, "elevenlabs_api_key") and settings.elevenlabs_api_key:
         providers["elevenlabs_tts"] = ElevenLabsTTSProvider(settings.elevenlabs_api_key, settings.elevenlabs_base_url)
-    if settings.kokoro_api_key:
-        providers["kokoro"] = KokoroTTSProvider(settings.kokoro_api_key, settings.kokoro_base_url)
+    kokoro_base = getattr(settings, "kokoro_base_url", "https://api.kokoro.dev/v1")
+    if settings.kokoro_api_key or _is_local_url(kokoro_base):
+        # Local Docker needs no key; a hosted endpoint still needs one.
+        providers["kokoro"] = KokoroTTSProvider(settings.kokoro_api_key, kokoro_base)
     providers["edge_tts"] = EdgeTTSProvider()
     providers["local_tts_fallback"] = OfflineTTSProvider()
     if settings.google_tts_credentials_path:
@@ -1558,7 +1605,13 @@ class ProviderRegistry:
             "ace_step": ProviderCapability("ace_step", ("music",), mode="local", free_tier=True, estimated_cents=0, quality_rank=85),
             "local_audio_fallback": ProviderCapability("local_audio_fallback", ("music",), mode="local", free_tier=True, estimated_cents=0, quality_rank=30),
             "elevenlabs_tts": ProviderCapability("elevenlabs_tts", ("tts",), quality_rank=95, estimated_cents=3),
-            "kokoro": ProviderCapability("kokoro", ("tts",), quality_rank=85, estimated_cents=1),
+            "kokoro": ProviderCapability(
+                "kokoro", ("tts",), quality_rank=85,
+                # Self-hosted Docker is free and unlimited; hosted API costs ~1¢/1k chars.
+                mode="local" if _is_local_url(getattr(self._settings, "kokoro_base_url", "")) else "cloud",
+                free_tier=_is_local_url(getattr(self._settings, "kokoro_base_url", "")),
+                estimated_cents=0 if _is_local_url(getattr(self._settings, "kokoro_base_url", "")) else 1,
+            ),
             "google_tts": ProviderCapability("google_tts", ("tts",), quality_rank=90, estimated_cents=2),
             "edge_tts": ProviderCapability("edge_tts", ("tts",), free_tier=True, quality_rank=70, estimated_cents=0),
             "local_tts_fallback": ProviderCapability("local_tts_fallback", ("tts",), mode="local", free_tier=True, estimated_cents=0, quality_rank=25),
