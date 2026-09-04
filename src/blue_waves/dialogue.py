@@ -817,6 +817,32 @@ def supported_languages() -> list[dict[str, str]]:
     ]
 
 
+# Pickable voices per language for the cockpit Generate form. Kokoro voices
+# work with the free local Docker deployment; Edge voices are free cloud;
+# ElevenLabs voices need ELEVENLABS_API_KEY.
+VOICE_OPTIONS: dict[str, list[dict[str, str]]] = {
+    "en": [
+        {"id": "af_bella", "label": "Bella — Kokoro local, warm female", "provider": "kokoro"},
+        {"id": "am_adam", "label": "Adam — Kokoro local, deep male", "provider": "kokoro"},
+        {"id": "af_nicole", "label": "Nicole — Kokoro local, young female", "provider": "kokoro"},
+        {"id": "am_michael", "label": "Michael — Kokoro local, young male", "provider": "kokoro"},
+        {"id": "en-US-AriaNeural", "label": "Aria — Edge free cloud, female", "provider": "edge_tts"},
+        {"id": "en-US-GuyNeural", "label": "Guy — Edge free cloud, male", "provider": "edge_tts"},
+        {"id": "21m00Tcm4TlvDq8ikWAM", "label": "Adam — ElevenLabs (needs API key)", "provider": "elevenlabs_tts"},
+        {"id": "EXAVITQu4vr4xnSDxMaL", "label": "Bella — ElevenLabs (needs API key)", "provider": "elevenlabs_tts"},
+    ],
+    "ar": [
+        {"id": "ar-SA-ZariyahNeural", "label": "Zariyah — Edge free cloud, female", "provider": "edge_tts"},
+        {"id": "ar-SA-HamedNeural", "label": "Hamed — Edge free cloud, male", "provider": "edge_tts"},
+    ],
+}
+
+
+def voice_options(language: str = "en") -> list[dict[str, str]]:
+    """Return the pickable host/guest voices for a language."""
+    return VOICE_OPTIONS.get(language) or VOICE_OPTIONS["en"]
+
+
 def voices_for(language: str) -> tuple[str, str]:
     """Return (host_voice, guest_voice) for a language code."""
     pack = LANGUAGE_PACKS.get(language) or LANGUAGE_PACKS["en"]

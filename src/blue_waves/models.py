@@ -338,6 +338,8 @@ class PodcastAsset:
     duration_target_seconds: int
     status: AssetStatus = AssetStatus.IDEA
     guest_voice: str | None = None
+    host_name: str = "Host"
+    guest_name: str = "Guest"
     format: str = "dialogue"
     script: str = ""
     audio_path: str | None = None
@@ -392,6 +394,8 @@ def podcast_asset_from_dict(data: dict[str, Any]) -> PodcastAsset:
         duration_target_seconds=data["duration_target_seconds"],
         status=AssetStatus(data.get("status", "idea")),
         guest_voice=data.get("guest_voice"),
+        host_name=data.get("host_name", "Host"),
+        guest_name=data.get("guest_name", "Guest"),
         format=data.get("format", "dialogue"),
         script=data.get("script", ""),
         audio_path=data.get("audio_path"),

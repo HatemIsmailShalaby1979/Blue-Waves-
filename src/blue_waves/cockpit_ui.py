@@ -246,6 +246,8 @@ LOADERS.library = async function(){
             <span class="title">${esc(item.title||item.topic||item.asset_id)}</span>
             <span class="badge ${badgeClass(item.status)}">${esc(item.status)}</span>
             <span class="pill">attempt ${item.attempt||1}</span>
+            ${(item.provider||item.tts_provider)?`<span class="pill" title="generating provider">via ${esc(item.provider||item.tts_provider)}</span>`:''}
+            ${(item.metadata&&item.metadata.provider_attempts)?`<span class="pill small" title="${esc(item.metadata.provider_attempts.join(' → '))}">chain: ${esc(item.metadata.provider_attempts.join('→'))}</span>`:''}
             ${item.quality_score!=null?`<span class="pill">quality ${item.quality_score}</span>`:''}
             ${item.quality_issues&&item.quality_issues.length?`<span class="pill bad">${esc(item.quality_issues.join('; '))}</span>`:''}
             <div style="margin-left:auto" class="small muted">${esc(item.created_by||'-')} · ${esc(item.created_at||'')}</div>
@@ -369,20 +371,31 @@ LOADERS.generate = async function(){
       </div>
       <div class="card"><h2>Generate Podcast</h2>
         <label>Topic</label><input id="g-p-topic" placeholder="e.g. The science of sleep">
-        <label>Language</label><select id="g-p-lang">${langOpts}</select>
+        <label>Language</label><select id="g-p-lang" onchange="loadVoices()">${langOpts}</select>
+        <div class="row">
+          <div style="flex:1"><label>Host name</label><input id="g-p-hname" value="Alex"></div>
+          <div style="flex:1"><label>Guest name</label><input id="g-p-gname" value="Sarah"></div>
+        </div>
+        <label>Host voice</label><select id="g-p-hvoice"></select>
+        <label>Guest voice</label><select id="g-p-gvoice"></select>
         <label>Script (optional)</label><textarea id="g-p-script" rows="3" placeholder="Leave blank to auto-build a two-host dialogue about the topic"></textarea>
         <label>Duration (s)</label><input id="g-p-dur" value="600">
         <label>Quality</label><select id="g-p-q"><option>free</option><option>standard</option><option selected>high</option></select>
-        <p class="muted small">Always two voices (host + guest) in the chosen language, written to fill the full duration.</p>
+        <p class="muted small">Two named voices in the chosen language, written to fill the full duration. Speaker labels are never spoken aloud.</p>
         <button class="btn" onclick="genPodcast()">Generate Podcast</button>
       </div>
       <div class="card"><h2>Generate Video</h2>
         <label>Topic</label><input id="g-v-topic" placeholder="e.g. How batteries work">
         <label>Scene description</label><textarea id="g-v-prompt" rows="2" placeholder="Describe what should be shown"></textarea>
-        <label>Duration (s)</label><input id="g-v-dur" value="20">
+        <label>Duration (s, max 600)</label><input id="g-v-dur" value="20">
         <label>Quality</label><select id="g-v-q"><option>free</option><option>standard</option><option selected>high</option></select>
-        <p class="muted small">Narration is always English. High quality renders 1080p imagery generated from your topic.</p>
+        <p class="muted small">Narration is always English. High quality renders 1080p. 60s+ runs as a background job (multi-scene + chapters) with live progress below.</p>
         <button class="btn" onclick="genVideo()">Generate Video</button>
+        <div id="g-v-job" style="margin-top:10px"></div>
+      </div>
+      <div class="card"><h2>Background Video Jobs</h2>
+        <div id="g-jobs"><p class="muted small">No jobs yet.</p></div>
+        <button class="btn gray" onclick="refreshJobs()">Refresh jobs</button>
       </div>
       <div class="card"><h2>Add to Queue</h2>
         <label>Content Type</label><select id="g-c-type"><option>video</option><option>music</option><option>podcast</option></select>
@@ -392,10 +405,58 @@ LOADERS.generate = async function(){
         <button class="btn" onclick="genQueue()">Add Request</button>
       </div>
     </div>`;
+  loadVoices(); refreshJobs();
 };
 async function genMusic(){ const b={topic:val('g-m-topic'),genre:val('g-m-genre'),mood:val('g-m-mood'),duration_seconds:+val('g-m-dur')||180,quality:sel('g-m-q')}; try{await api('/api/generate/music',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Music generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
-async function genPodcast(){ const b={topic:val('g-p-topic'),language:sel('g-p-lang')||'en',script:val('g-p-script'),duration_seconds:+val('g-p-dur')||600,quality:sel('g-p-q')}; try{await api('/api/generate/podcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Podcast generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
-async function genVideo(){ const b={topic:val('g-v-topic'),prompt:val('g-v-prompt')||val('g-v-topic'),duration:+val('g-v-dur')||20,quality:sel('g-v-q')}; try{await api('/api/generate/video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Video generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
+async function loadVoices(){
+  const lang = sel('g-p-lang')||'en';
+  try {
+    const d = await api('/api/voices?language='+encodeURIComponent(lang));
+    const opts = (d.voices||[]).map(v=>`<option value="${esc(v.id)}">${esc(v.label)}</option>`).join('');
+    const hv = document.getElementById('g-p-hvoice'), gv = document.getElementById('g-p-gvoice');
+    if (hv) hv.innerHTML = opts;
+    if (gv && hv) { gv.innerHTML = opts; if (hv.options.length>1) gv.selectedIndex = 1; }
+  } catch(e){ /* keep previous options */ }
+}
+async function genPodcast(){ const b={topic:val('g-p-topic'),language:sel('g-p-lang')||'en',script:val('g-p-script'),duration_seconds:+val('g-p-dur')||600,quality:sel('g-p-q'),host_name:val('g-p-hname')||'Host',guest_name:val('g-p-gname')||'Guest',host_voice:sel('g-p-hvoice')||'',guest_voice:sel('g-p-gvoice')||''}; try{await api('/api/generate/podcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Podcast generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
+async function genVideo(){
+  const b={topic:val('g-v-topic'),prompt:val('g-v-prompt')||val('g-v-topic'),duration:+val('g-v-dur')||20,quality:sel('g-v-q')};
+  if (b.duration >= 60) {
+    try {
+      const job = await api('/api/jobs/video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+      if (job.error) throw new Error(job.error);
+      toast('Background job started: '+job.job_id+' — progress below, page auto-refreshes');
+      pollJob(job.job_id); refreshJobs();
+    } catch(e){ toast('Error: '+e.message); }
+    return;
+  }
+  try{await api('/api/generate/video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Video generated'); showSection('library');}catch(e){toast('Error: '+e.message);}
+}
+async function pollJob(jobId){
+  const el = document.getElementById('g-v-job');
+  if (!el) return;
+  try {
+    const j = await api('/api/jobs/'+jobId);
+    el.innerHTML = `<div class="stat"><span class="k">${esc(j.stage||j.status)}</span><span class="v">${j.progress}%</span></div>
+      <div class="prog"><div class="fill" style="width:${j.progress}%"></div></div>
+      ${j.asset_id?`<p class="ok small">Done: ${esc(j.asset_id)} — <a href="#library" onclick="showSection('library')">open library</a></p>`:''}
+      ${j.error?`<p class="bad small">${esc(j.error)}</p>`:''}`;
+    if (j.status==='running' || j.status==='queued') setTimeout(()=>pollJob(jobId), 5000);
+    else refreshJobs();
+  } catch(e){ el.innerHTML = '<p class="bad small">Job poll failed: '+esc(e.message)+'</p>'; }
+}
+async function refreshJobs(){
+  const el = document.getElementById('g-jobs');
+  if (!el) return;
+  try {
+    const d = await api('/api/jobs');
+    const jobs = d.jobs||[];
+    el.innerHTML = jobs.length ? jobs.slice(0,10).map(j=>
+      `<div class="stat"><span class="k">${esc(j.topic)} (${j.duration}s)</span>
+       <span class="v">${esc(j.status)} ${j.progress}%${j.asset_id?' · '+esc(j.asset_id):''}</span></div>`).join('')
+      : '<p class="muted small">No jobs yet.</p>';
+  } catch(e){ el.innerHTML = '<p class="bad small">'+esc(e.message)+'</p>'; }
+}
 async function genQueue(){ const b={content_type:sel('g-c-type'),topic:val('g-c-topic'),priority:sel('g-c-pri'),quality:sel('g-c-q')}; try{await api('/api/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Added to queue'); showSection('overview');}catch(e){toast('Error: '+e.message);} }
 function val(id){return document.getElementById(id).value.trim();}
 function sel(id){return document.getElementById(id).value;}

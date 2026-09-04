@@ -57,7 +57,9 @@ class VideoUseEditor:
     def edit(self, raw_video_path: Path, transcript_text: str,
              narration_audio_path: Path | None = None,
              topic: str = "", duration: int = 180,
-             width: int = 1920, height: int = 1080) -> EditResult:
+             width: int = 1920, height: int = 1080,
+             chapters: list[tuple[float, str]] | None = None,
+             max_captions: int = 60) -> EditResult:
         """Run the full video-use post-production pipeline on a raw video.
 
         Args:
@@ -68,6 +70,9 @@ class VideoUseEditor:
             duration: Target duration in seconds
             width: Output width
             height: Output height
+            chapters: Optional [(start_seconds, title)] chapter cards burned in
+                at each section boundary (multi-scene long-form videos).
+            max_captions: Cap on burned-in caption overlays (raised for long-form).
 
         Returns:
             EditResult with the edited video path and metadata
@@ -106,7 +111,8 @@ class VideoUseEditor:
 
         # Step 4: Render — apply EDL with ffmpeg (overlays, transitions, grading)
         try:
-            output_path = self._render_edl(raw_video_path, edl, topic, duration, width, height)
+            output_path = self._render_edl(raw_video_path, edl, topic, duration, width, height,
+                                           chapters=chapters or [], max_captions=max_captions)
         except Exception as exc:
             return EditResult(
                 success=False,
@@ -277,12 +283,15 @@ class VideoUseEditor:
         return edl
 
     def _render_edl(self, raw_video_path: Path, edl: list[dict[str, Any]],
-                    topic: str, duration: int, width: int, height: int) -> Path:
+                    topic: str, duration: int, width: int, height: int,
+                    chapters: list[tuple[float, str]] | None = None,
+                    max_captions: int = 60) -> Path:
         """Render the final video applying the EDL with ffmpeg.
 
         Applies:
         - Title overlay at the start
         - Caption text synchronized to EDL entries
+        - Chapter cards at section boundaries (long-form)
         - Color grading (cinematic LUT-style)
         - Fade in/out transitions
         - YouTube delivery spec: H.264 CRF 18, preset slow, 48kHz AAC, -14 LUFS
@@ -300,7 +309,7 @@ class VideoUseEditor:
 
         # Build caption filter — progressive drawtext synced to EDL
         caption_filters: list[str] = []
-        for i, entry in enumerate(edl[:20]):  # Cap at 20 captions to avoid filter overflow
+        for i, entry in enumerate(edl[:max_captions]):
             text = entry.get("text", "").strip()
             if not text:
                 continue
@@ -325,6 +334,19 @@ class VideoUseEditor:
             f"enable='between(t,0,5)'"
         )
 
+        # Chapter cards: larger centered title shown 4s at each boundary.
+        chapter_filters: list[str] = []
+        for start, title in (chapters or [])[:12]:
+            if not title or start < 0 or start >= duration:
+                continue
+            chapter_filters.append(
+                f"drawtext=fontfile='{_escape(font) if font else ''}':"
+                f"text='{_escape(title[:60])}':"
+                f"fontsize={int(height * 0.055)}:fontcolor=yellow:borderw=3:bordercolor=black@0.7:"
+                f"x=(w-text_w)/2:y=h*0.4:"
+                f"enable='between(t,{start:.1f},{min(duration, start + 4):.1f})'"
+            )
+
         # Color grading: cinematic curve + saturation boost
         grade_filter = "eq=contrast=1.05:brightness=0.02:saturation=1.15:gamma=0.98"
 
@@ -333,6 +355,7 @@ class VideoUseEditor:
 
         # Combine all video filters
         vf_parts = [title_filter]
+        vf_parts.extend(chapter_filters)
         vf_parts.extend(caption_filters)
         vf_parts.append(grade_filter)
         vf_parts.append(fade_filter)

@@ -41,13 +41,17 @@ class PodcastEngine:
                  guest_voice: str | None = "EXAVITQu4vr4xnSDxMaL", duration_seconds: int = 1800,
                  format: str = "dialogue", music_intro: bool = True,
                  music_outro: bool = True, quality: str = "high",
-                 language: str = "en", two_voices: bool = True) -> PodcastGenerationResult:
+                 language: str = "en", two_voices: bool = True,
+                 host_name: str = "Host", guest_name: str = "Guest") -> PodcastGenerationResult:
         """ZACK — multi-host podcast engine with TTS + music mixing.
 
         For quality="high": uses ElevenLabs voices (Adam + Bella) for
         human-quality narration, continuous background music bed with
         sidechain compression (music ducks during speech), and music
         fills between pauses.
+
+        ``host_name``/``guest_name`` personalize the show: the opening
+        introduces the guest by name instead of the generic "host/guest".
         """
         asset_id = f"podcast-{uuid.uuid4().hex[:12]}"
 
@@ -57,6 +61,8 @@ class PodcastEngine:
         host_voice = host_voice or default_host
         if two_voices:
             guest_voice = guest_voice or default_guest
+        host_name = (host_name or "Host").strip()
+        guest_name = (guest_name or "Guest").strip()
 
         asset = PodcastAsset(
             asset_id=asset_id,
@@ -65,6 +71,8 @@ class PodcastEngine:
             topic=topic,
             host_voice=host_voice,
             guest_voice=guest_voice,
+            host_name=host_name,
+            guest_name=guest_name,
             language=language,
             duration_target_seconds=duration_seconds,
             format=format,
@@ -78,6 +86,12 @@ class PodcastEngine:
         turns = build_dialogue(topic, language, duration_seconds, script)
         if not two_voices:
             turns = [("host", " ".join(text for _, text in turns))]
+        else:
+            # Personalized cold open: the host welcomes listeners and names
+            # the guest, so nobody ever hears the generic "host/guest".
+            opener = (f"Welcome back to the show, I'm {host_name}. "
+                      f"With me today is {guest_name}, and we're talking about {topic}.")
+            turns = [("host", opener)] + turns
         asset.script = dialogue_to_script(turns)
         segments = [
             (text, host_voice if speaker == "host" else (guest_voice or host_voice))
@@ -176,6 +190,8 @@ class PodcastEngine:
             "music_provider": asset.music_provider,
             "tts_voice_host": asset.host_voice,
             "tts_voice_guest": asset.guest_voice,
+            "host_name": asset.host_name,
+            "guest_name": asset.guest_name,
             "provider": asset.tts_provider,  # Primary provider for this podcast (TTS provider)
             "language": language,
             "language_label": language_label(language),

@@ -12,6 +12,7 @@ from .engines import FactCheckEngine, ProductionEngine, ResearchEngine, ScriptEn
 from .finance import FinanceEngine
 from .governance import Governance, GovernanceViolation, Policy
 from .hybrid import HybridRouter, Stage
+from .jobs import JobManager, VideoJob
 from .ledger import AppendOnlyLedger, JsonStore
 from .models import (AssetStatus, ContentAsset, ContentRequest, CostEvent, Language, MetricEvent,
                      MusicAsset, PodcastAsset, asset_from_dict, music_asset_from_dict,
@@ -106,6 +107,7 @@ class BlueWavesApplication:
         self.podcast_engine = PodcastEngine(self.settings, self.governance, self.provider_registry, self.health_monitor)
         self.video_engine = VideoEngine(self.settings, self.governance, self.provider_registry, self.health_monitor)
         self.queue = ContentQueue(self.settings)
+        self.jobs = JobManager(max_workers=1)
         self.scheduler = Scheduler(
             self.settings, self.governance, self.queue,
             executor=self._execute_scheduled_job,
@@ -692,7 +694,9 @@ class BlueWavesApplication:
             raise GovernanceViolation("only a rejected podcast preview can be retried")
         asset = self.generate_podcast(
             topic=f"{previous.topic} — enhancement: {enhancement}", script=previous.script,
-            host_voice=previous.host_voice, duration_seconds=previous.duration_target_seconds, quality=quality,
+            host_voice=previous.host_voice, guest_voice=previous.guest_voice,
+            host_name=previous.host_name, guest_name=previous.guest_name,
+            duration_seconds=previous.duration_target_seconds, quality=quality,
         )
         if not asset:
             raise RuntimeError("retry generation failed")
@@ -818,12 +822,18 @@ class BlueWavesApplication:
                 "provider": result.provider_used,
             }, self.settings.tenant_id, "BELAL")
             return result.asset
+        # Loud failure with the per-provider reasons — never silent noise.
+        self.ledger.append("music_generation_failed", {
+            "topic": topic, "quality": quality,
+            "provider_errors": (result.error or "unknown error")[:500] if result else "no result",
+        }, self.settings.tenant_id, "BELAL")
         return None
 
     def generate_podcast(self, topic: str, script: str, host_voice: str = "en-US-AriaNeural",
                          guest_voice: str | None = None, duration_seconds: int = 1800,
                          format: str = "dialogue", quality: str = "high",
-                         language: str = "en") -> PodcastAsset | None:
+                         language: str = "en", host_name: str = "Host",
+                         guest_name: str = "Guest") -> PodcastAsset | None:
         estimated = self.provider_registry.estimated_cost_for("tts", quality)
         self.governance.assert_autonomous_generation_allowed(
             "podcast", self.queue.get_weekly_count("podcast"), estimated
@@ -832,6 +842,7 @@ class BlueWavesApplication:
             topic=topic, script=script, host_voice=host_voice,
             guest_voice=guest_voice, duration_seconds=duration_seconds, format=format,
             quality=quality, language=language,
+            host_name=host_name, guest_name=guest_name,
         )
         if result.success and result.asset:
             self._enhance_podcast_asset(result.asset)
@@ -847,16 +858,19 @@ class BlueWavesApplication:
 
     def generate_video(self, topic: str, prompt: str, duration: int = 5,
                        quality: str = "high", narration: str | None = None,
-                       music_mode: str = "ambient") -> ContentAsset | None:
+                       music_mode: str = "ambient",
+                       progress_cb: Any = None) -> ContentAsset | None:
         estimated = self.provider_registry.estimated_cost_for("video", quality)
         self.governance.assert_autonomous_generation_allowed(
             "video", self.queue.get_weekly_count("video"), estimated
         )
         result = self.video_engine.generate(
             topic=topic, prompt=prompt, duration=duration, quality=quality,
-            narration=narration, music_mode=music_mode,
+            narration=narration, music_mode=music_mode, progress_cb=progress_cb,
         )
         if result.success and result.asset:
+            if progress_cb:
+                progress_cb("mastering", 93.0)
             self._enhance_video_asset(result.asset)
             self.assets[result.asset.asset_id] = result.asset
             self.store.save_asset(result.asset)
@@ -867,6 +881,64 @@ class BlueWavesApplication:
             }, self.settings.tenant_id, "BELAL")
             return result.asset
         return None
+
+    # ------------------------------------------------------------------ #
+    # Background video jobs (long-form: 60s+ renders run for many minutes) #
+    # ------------------------------------------------------------------ #
+
+    MAX_VIDEO_JOB_SECONDS = 600
+
+    def submit_video_job(self, topic: str, prompt: str, duration: int = 180,
+                         quality: str = "high", narration: str | None = None,
+                         music_mode: str = "ambient") -> VideoJob:
+        """Queue a long-form video render as a background job.
+
+        Returns immediately with a job the cockpit polls. Raises on invalid
+        input or governance block so bad jobs never enter the queue.
+        """
+        if not (topic or "").strip():
+            raise ValueError("topic is required")
+        if duration < 60:
+            raise ValueError("jobs are for 60s+ videos; use /api/generate/video for shorts")
+        if duration > self.MAX_VIDEO_JOB_SECONDS:
+            raise ValueError(f"duration capped at {self.MAX_VIDEO_JOB_SECONDS}s")
+        estimated = self.provider_registry.estimated_cost_for("video", quality)
+        self.governance.assert_autonomous_generation_allowed(
+            "video", self.queue.get_weekly_count("video"), estimated
+        )
+        job = self.jobs.submit_video(topic=topic, prompt=prompt or topic, duration=duration,
+                                     quality=quality, narration=narration, music_mode=music_mode)
+        self.ledger.append("video_job_submitted", job.to_dict(), self.settings.tenant_id, "LEO")
+        self.jobs.run(job.job_id, self._run_video_job)
+        return job
+
+    def _run_video_job(self, job: VideoJob, progress: Any) -> None:
+        """Worker body: full pipeline with stage progress, then persist."""
+        asset = self.generate_video(
+            topic=job.topic, prompt=job.prompt, duration=job.duration,
+            quality=job.quality, narration=job.narration, music_mode=job.music_mode,
+            progress_cb=progress,
+        )
+        if not asset:
+            raise RuntimeError("video generation failed (see provider errors in health panel)")
+        check = self.quality_gates.check_media_asset(
+            asset, asset.media_manifest.get("video_path"), "video")
+        asset.quality_score, asset.quality_issues = check.score, check.issues
+        self.store.save_asset(asset)
+        self.jobs.update(job.job_id, asset_id=asset.asset_id)
+        self.ledger.append("video_job_completed", {
+            "job_id": job.job_id, "asset_id": asset.asset_id,
+            "quality_score": check.score, "quality_passed": check.passed,
+        }, self.settings.tenant_id, "BELAL")
+
+    def get_video_job(self, job_id: str) -> VideoJob:
+        job = self.jobs.get(job_id)
+        if not job:
+            raise KeyError(f"unknown job: {job_id}")
+        return job
+
+    def list_video_jobs(self) -> list[VideoJob]:
+        return self.jobs.list_jobs()
 
     def approve_music(self, asset_id: str, approver: str | None = None) -> dict[str, Any]:
         asset = self.music_assets.get(asset_id)

@@ -9,7 +9,7 @@ from typing import Any
 from .agents import roster
 from .application import BlueWavesApplication
 from .cockpit_ui import DASHBOARD_HTML
-from .dialogue import supported_languages
+from .dialogue import supported_languages, voice_options
 
 
 class CockpitApp:
@@ -267,6 +267,8 @@ class CockpitApp:
                     script=data.get("script", ""),
                     host_voice=data.get("host_voice") or "",
                     guest_voice=data.get("guest_voice"),
+                    host_name=data.get("host_name", "Host") or "Host",
+                    guest_name=data.get("guest_name", "Guest") or "Guest",
                     duration_seconds=int(data.get("duration_seconds", 600)),
                     format=data.get("format", "dialogue"),
                     quality=data.get("quality", "high"),
@@ -284,7 +286,9 @@ class CockpitApp:
             else:
                 return {"error": f"unknown content type: {content_type}"}
             if not asset:
-                return {"error": f"{content_type} generation failed (possibly blocked by policy or provider approval)"}
+                return {"error": f"{content_type} generation failed — no provider in the chain succeeded. "
+                                 f"Check the provider health panel and recent ledger events for per-provider reasons "
+                                 f"(for music at high quality the local synth fallback is intentionally disabled)."}
             d = asset.to_dict(); d["content_type"] = content_type
             return d
         except Exception as exc:
@@ -312,6 +316,32 @@ class CockpitApp:
         except Exception as exc:
             return {"error": str(exc)}
         return {"error": f"unknown asset: {asset_id}"}
+
+    def submit_video_job(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Queue a 60s+ background video render; returns immediately with a job."""
+        try:
+            job = self._app.submit_video_job(
+                topic=data.get("topic", ""),
+                prompt=data.get("prompt", data.get("topic", "")),
+                duration=int(data.get("duration", 180)),
+                quality=data.get("quality", "high"),
+                narration=data.get("narration", data.get("script", "")) or None,
+                music_mode=data.get("music_mode", "ambient"),
+            )
+            return job.to_dict()
+        except (ValueError, KeyError) as exc:
+            return {"error": str(exc)}
+        except Exception as exc:
+            return {"error": f"job submit failed: {exc}"}
+
+    def get_video_job(self, job_id: str) -> dict[str, Any]:
+        try:
+            return self._app.get_video_job(job_id).to_dict()
+        except KeyError as exc:
+            return {"error": str(exc)}
+
+    def list_video_jobs(self) -> dict[str, Any]:
+        return {"jobs": [j.to_dict() for j in self._app.list_video_jobs()]}
 
     def get_video_use_status(self) -> dict[str, Any]:
         """video-use integration status (Phase 8)."""
@@ -429,6 +459,10 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             self.serve_json(self.cockpit.get_connections())
         elif path == "/api/languages":
             self.serve_json({"languages": supported_languages()})
+        elif path == "/api/voices":
+            query = parse_qs(parsed.query)
+            language = (query.get("language", ["en"])[0] or "en")
+            self.serve_json({"language": language, "voices": voice_options(language)})
         elif path.startswith("/api/quality/"):
             parts = path.split("/")
             if len(parts) >= 4 and parts[3]:
@@ -437,6 +471,14 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
                 self.send_error(400)
         elif path == "/api/video-use/status":
             self.serve_json(self.cockpit.get_video_use_status())
+        elif path == "/api/jobs":
+            self.serve_json(self.cockpit.list_video_jobs())
+        elif path.startswith("/api/jobs/"):
+            parts = path.split("/")
+            if len(parts) >= 4 and parts[3]:
+                self.serve_json(self.cockpit.get_video_job(parts[3]))
+            else:
+                self.send_error(400)
         elif path.startswith("/media/"):
             self.serve_media(path)
         else:
@@ -563,6 +605,12 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             if len(parts) >= 5 and parts[4]:
                 self.serve_json(self.cockpit.trigger_video_use_edit(parts[4]))
             else:
+                self.send_error(400)
+        elif path == "/api/jobs/video":
+            try:
+                data = json.loads(body) if body else {}
+                self.serve_json(self.cockpit.submit_video_job(data))
+            except json.JSONDecodeError:
                 self.send_error(400)
         else:
             self.send_error(404)
