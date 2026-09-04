@@ -325,6 +325,11 @@ class VideoEngine:
         """
         tmpdir = Path(tempfile.mkdtemp(prefix="bw-scenes-"))
         scene_files: list[Path] = []
+        # Last-frame continuation: providers with image-to-video start every
+        # scene after the first from the previous scene's final frame. This is
+        # what makes multi-clip AI video look continuous instead of 6 restarts.
+        use_i2v = bool(getattr(provider, "supports_image_to_video", False))
+        prev_frame: bytes | None = None
         try:
             for i, section in enumerate(sections):
                 scene_prompt = f"{prompt} (part {i + 1} of {num_scenes})"
@@ -334,12 +339,20 @@ class VideoEngine:
                         prompt=scene_prompt, duration=scene_dur, resolution=resolution,
                         narration=section, music_mode=music_mode,
                     )
+                elif use_i2v and prev_frame is not None:
+                    scene_bytes = provider.generate_from_image(
+                        prev_frame, scene_prompt, scene_dur)
                 else:
                     scene_bytes = provider.generate(
                         prompt=scene_prompt, duration=scene_dur, resolution=resolution)
                 scene_file = tmpdir / f"scene-{i:02d}.mp4"
                 scene_file.write_bytes(scene_bytes)
                 scene_files.append(scene_file)
+                if use_i2v:
+                    try:
+                        prev_frame = self._extract_last_frame(scene_file)
+                    except Exception:
+                        prev_frame = None  # next scene falls back to text-to-video
                 if progress_cb:
                     progress_cb(f"scene {i + 1}/{num_scenes} rendered",
                                 5.0 + 50.0 * (i + 1) / num_scenes)
@@ -353,6 +366,27 @@ class VideoEngine:
             try:
                 tmpdir.rmdir()
             except OSError:
+                pass
+
+    @staticmethod
+    def _extract_last_frame(scene_file: Path) -> bytes:
+        """Grab the final frame of a scene clip as JPEG bytes (i2v seed)."""
+        fd, frame_path = tempfile.mkstemp(suffix=".jpg")
+        os.close(fd)
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-sseof", "-0.5",
+                 "-i", str(scene_file), "-frames:v", "1", "-q:v", "3", frame_path],
+                check=True, timeout=60, capture_output=True,
+            )
+            payload = Path(frame_path).read_bytes()
+            if not payload:
+                raise RuntimeError("empty frame")
+            return payload
+        finally:
+            try:
+                Path(frame_path).unlink()
+            except FileNotFoundError:
                 pass
 
     @staticmethod

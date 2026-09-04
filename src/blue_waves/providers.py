@@ -670,26 +670,145 @@ def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str
         raise ProviderUnavailable(f"aimlapi video download failed: {exc}") from exc
 
 
-class KlingVideoProvider:
-    """Kling AI video generation via aimlapi gateway."""
+def _kling_native_request(api_key: str, base_url: str, path: str,
+                            payload: dict[str, Any] | None,
+                            timeout: int = 60) -> dict[str, Any]:
+    """POST/GET against the native Kling API with error bodies surfaced."""
+    import urllib.error
+    url = f"{base_url.rstrip('/')}{path}"
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {"Authorization": f"Bearer {api_key}"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = _api_request(url, data=data, headers=headers,
+                       method="POST" if data is not None else "GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        err_body = exc.read().decode("utf-8", errors="replace")
+        raise ProviderUnavailable(f"kling request failed ({exc.code}): {err_body[:300]}") from exc
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        raise ProviderUnavailable(f"kling request failed: {exc}") from exc
 
-    def __init__(self, api_key: str | None = None, base_url: str = "https://api.aimlapi.com") -> None:
+
+def _kling_parse_task(submit_raw: Any) -> str:
+    """Extract a task id from Kling's submit response (tolerant)."""
+    if isinstance(submit_raw, dict):
+        data = submit_raw.get("data")
+        if isinstance(data, dict) and data.get("task_id"):
+            return str(data["task_id"])
+        for key in ("task_id", "id"):
+            if submit_raw.get(key):
+                return str(submit_raw[key])
+    raise ProviderUnavailable(f"kling returned no task id: {submit_raw}")
+
+
+def _kling_parse_status(poll_raw: Any) -> tuple[str, str | None]:
+    """Return (state, video_url); state in queued/running/completed/failed."""
+    data = poll_raw.get("data", poll_raw) if isinstance(poll_raw, dict) else {}
+    if not isinstance(data, dict):
+        return "running", None
+    raw_status = str(data.get("task_status") or data.get("status") or "").lower()
+    if raw_status in ("succeed", "succeeded", "completed", "done", "success"):
+        state = "completed"
+    elif raw_status in ("failed", "fail", "error", "cancelled", "canceled"):
+        state = "failed"
+    else:
+        state = "running"
+    url: str | None = None
+    result = data.get("task_result") or {}
+    if isinstance(result, dict):
+        videos = result.get("videos") or []
+        if videos and isinstance(videos[0], dict):
+            url = videos[0].get("url")
+        url = url or result.get("url")
+    url = url or data.get("video_url") or data.get("url")
+    fail_reason = data.get("fail_reason") or data.get("message") or ""
+    if state == "failed" and fail_reason:
+        raise ProviderUnavailable(f"kling generation failed: {fail_reason}"[:300])
+    return state, url
+
+
+class KlingVideoProvider:
+    """Kling AI video generation via the NATIVE Kling API.
+
+    ``https://api-singapore.klingai.com`` with a console API key
+    (``Authorization: Bearer``). Supports text-to-video AND image-to-video,
+    which powers the last-frame continuation loop for long-form video:
+    each scene starts from the previous scene's final frame.
+    """
+
+    name = "kling"
+    provides_narration = False
+    supports_image_to_video = True
+    TEXT_MODEL = "kling-v2.6-std"
+    IMAGE_MODEL = "kling-v2.6-std"
+
+    def __init__(self, api_key: str | None = None,
+                 base_url: str = "https://api-singapore.klingai.com") -> None:
         self.name = "kling"
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
+        self.api_key = (api_key or "").strip() or None
+        self.base_url = (base_url or "https://api-singapore.klingai.com").rstrip("/")
 
     def generate(self, prompt: str, duration: int = 5, resolution: str = "720p",
                  **kwargs: Any) -> bytes:
         if not self.api_key:
             raise ProviderUnavailable("Kling API key not configured")
-        return _aimlapi_video_generate(
-            api_key=self.api_key,
-            base_url=self.base_url,
-            model="kling-video/v1/standard/text-to-video",
-            prompt=prompt,
-            duration=min(duration, 10),
-            aspect_ratio="16:9",
+        _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
+        clip = 10 if duration > 7 else 5  # native durations: 5 or 10 seconds
+        raw = _kling_native_request(
+            self.api_key, self.base_url, "/v1/videos/text2video",
+            {"model": self.TEXT_MODEL, "prompt": prompt[:2500],
+             "duration": clip, "aspect_ratio": "16:9"},
         )
+        return self._poll_and_download(raw)
+
+    def generate_from_image(self, image_bytes: bytes, prompt: str,
+                            duration: int = 5, **kwargs: Any) -> bytes:
+        """Image-to-video: continue from a reference frame (last-frame loop)."""
+        if not self.api_key:
+            raise ProviderUnavailable("Kling API key not configured")
+        _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
+        import base64
+        clip = 10 if duration > 7 else 5
+        raw = _kling_native_request(
+            self.api_key, self.base_url, "/v1/videos/image2video",
+            {"model": self.IMAGE_MODEL, "prompt": prompt[:2500],
+             "image": base64.b64encode(image_bytes).decode("ascii"),
+             "duration": clip, "aspect_ratio": "16:9"},
+        )
+        return self._poll_and_download(raw)
+
+    def _poll_and_download(self, submit_raw: dict[str, Any]) -> bytes:
+        import time as _time
+        task_id = _kling_parse_task(submit_raw)
+        deadline = _time.time() + 600
+        while _time.time() < deadline:
+            poll = _kling_native_request(
+                self.api_key or "", self.base_url, f"/v1/videos/{task_id}",
+                None, timeout=30,
+            )
+            try:
+                state, url = _kling_parse_status(poll)
+            except ProviderUnavailable:
+                raise
+            except Exception as exc:
+                raise ProviderUnavailable(f"kling poll parse failed: {exc}") from exc
+            if state == "completed":
+                if not url:
+                    raise ProviderUnavailable(f"kling completed with no video url: {poll}")
+                dl = _api_request(url)
+                try:
+                    with urllib.request.urlopen(dl, timeout=180) as resp:
+                        payload = resp.read()
+                except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                    raise ProviderUnavailable(f"kling download failed: {exc}") from exc
+                if not payload:
+                    raise ProviderUnavailable("kling download produced empty output")
+                return payload
+            _time.sleep(15)
+        raise ProviderUnavailable("kling generation timed out")
 
 
 class SeedanceVideoProvider:
