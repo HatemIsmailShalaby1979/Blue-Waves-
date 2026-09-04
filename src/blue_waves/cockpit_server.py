@@ -546,7 +546,7 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             quality = (query.get("quality", ["high"])[0] or "high")
             provider = (query.get("provider", [None])[0] or None)
             try:
-                self.serve_json(self._app.quote_video_job(duration, quality, provider))
+                self.serve_json(self.app.quote_video_job(duration, quality, provider))
             except Exception as exc:
                 self.serve_json({"error": str(exc)})
         elif path.startswith("/api/jobs/"):
