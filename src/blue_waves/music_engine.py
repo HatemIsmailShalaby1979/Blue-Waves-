@@ -62,6 +62,13 @@ class MusicEngine:
 
         providers = self._provider_candidates(preferred_provider, quality)
         errors: list[str] = []
+        if not providers:
+            asset.transition(AssetStatus.REJECTED)
+            return MusicGenerationResult(
+                success=False, asset=asset,
+                error=("local pixel generation is disabled (BLUE_WAVES_ALLOW_LOCAL_FALLBACK=false) "
+                       "and no cloud music provider is configured — add a funded aimlapi key or upload an MP3"),
+            )
         for provider in providers:
           reservation = None
           try:
@@ -107,6 +114,8 @@ class MusicEngine:
 
     #: Local PCM synth is never acceptable for paid-tier quality — a silent
     #: downgrade to noise is worse than an honest, actionable failure.
+    #: Strict deployments (BLUE_WAVES_ALLOW_LOCAL_FALLBACK=false) ban it
+    #: for every quality tier.
     CLOUD_ONLY_QUALITIES = ("high", "premium")
 
     def _provider_candidates(self, preferred_provider: str, quality: str) -> list[Any]:
@@ -117,9 +126,12 @@ class MusicEngine:
             else:
                 preferred = preferred_provider if preferred_provider != "suno_api" else None
             candidates = self._providers.configured_media_candidates("music", preferred, quality)
-            if quality in self.CLOUD_ONLY_QUALITIES:
+            from .providers import allows_local_pixels
+            if quality in self.CLOUD_ONLY_QUALITIES or not allows_local_pixels(self._settings):
                 cloud = [p for p in candidates if p.name != "local_audio_fallback"]
-                if cloud:
+                if cloud or not allows_local_pixels(self._settings):
+                    # Possibly empty under a strict ban: the engine then fails
+                    # loudly instead of rendering synth noise.
                     return cloud
             return candidates
         return [self._select_provider(preferred_provider)]
