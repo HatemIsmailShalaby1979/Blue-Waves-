@@ -105,6 +105,10 @@ class MusicEngine:
         asset.transition(AssetStatus.REJECTED)
         return MusicGenerationResult(success=False, asset=asset, error="; ".join(errors))
 
+    #: Local PCM synth is never acceptable for paid-tier quality — a silent
+    #: downgrade to noise is worse than an honest, actionable failure.
+    CLOUD_ONLY_QUALITIES = ("high", "premium")
+
     def _provider_candidates(self, preferred_provider: str, quality: str) -> list[Any]:
         if self._providers:
             # For high/premium: prefer Suno, then aimlapi, then ace_step, then local
@@ -112,7 +116,12 @@ class MusicEngine:
                 preferred = preferred_provider if preferred_provider != "ace_step" else "suno_api"
             else:
                 preferred = preferred_provider if preferred_provider != "suno_api" else None
-            return self._providers.configured_media_candidates("music", preferred, quality)
+            candidates = self._providers.configured_media_candidates("music", preferred, quality)
+            if quality in self.CLOUD_ONLY_QUALITIES:
+                cloud = [p for p in candidates if p.name != "local_audio_fallback"]
+                if cloud:
+                    return cloud
+            return candidates
         return [self._select_provider(preferred_provider)]
 
     def _select_provider(self, provider_name: str) -> Any:
