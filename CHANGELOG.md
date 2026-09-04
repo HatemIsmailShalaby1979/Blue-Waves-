@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — long-form video, named podcasts, provider honesty
+
+### Added
+- **Background video jobs** — `jobs.py` (`JobManager`); `POST /api/jobs/video`,
+  `GET /api/jobs`, `GET /api/jobs/{id}`; cockpit Generate panel auto-routes 60s+
+  videos to jobs with live progress polling. 60–600s supported.
+- **Multi-scene long-form assembly** — 60s+ videos split into ~30s scenes (max 8),
+  concatenated, then one video-use pass with **chapter cards** and up to 60 captions.
+- **Named podcast voices** — `host_name`/`guest_name` on assets, personalized cold
+  open ("I'm Alex, with me today is Sarah"), `/api/voices` catalog (Kokoro local,
+  Edge free, ElevenLabs keyed), cockpit dropdowns + name fields.
+- **Keyless local Kokoro** — blank key + `KOKORO_BASE_URL=http://localhost:8880/v1`
+  registers as a free local provider with ElevenLabs→Kokoro voice mapping.
+
+### Fixed
+- Speaker labels (`Host:`/`Guest:`, single- or multi-line) are stripped before TTS.
+- Cross-drive video-use replace (WinError 17) via same-dir temp + shutil.move.
+- OpenRouter/HuggingFace host-allowlist entries; Kokoro/ElevenLabs base-URL saving.
+- Suno without key now reports "no public API" instead of a generic auth error.
+
+### Changed
+- **Music `high`/`premium` is cloud-only**: refuses the local PCM synth fallback and
+  fails loudly with per-provider reasons (ledger `music_generation_failed`); the
+  cockpit library shows the generating provider + fallback chain per asset.
+
 ## 0.3.0 — 2026-09-04 (Quality Sprint)
 
 Maximize generated-media quality to compete with real YouTube creators: video-use
