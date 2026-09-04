@@ -7,13 +7,17 @@
 
 ## 🎯 Executive Verdict
 
+### Execution update — 2026-09-03
+
+The Phase 0 technical exit gate is now verified: the Cockpit generated real local media, enforced preview approval, supported owner-feedback retries, and published an approved private audio-derived video through the linked YouTube OAuth account. The earlier `$0` revenue finding remains valid because a private test upload is not revenue evidence. See `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md` for the evidence and remaining external gates.
+
 | Metric | Value |
 |--------|-------|
-| **Current Revenue** | $0 (all publishing disabled) |
+| **Current Revenue** | $0 (private test publishing verified; revenue not evidenced) |
 | **Monthly Burn** | ~$20–30 (electricity only) |
 | **Time to First Dollar** | 4–8 weeks (if Phase 0–1 complete) |
 | **Stable Income Probability (12mo)** | **15–25%** (without fixes) → **60–75%** (with full execution) |
-| **Fatal Blockers** | 3 (Publishing disabled, Providers stubbed, No audience acquisition) |
+| **Fatal Blockers** | 2 (Provider-specific cloud media contracts, No audience acquisition) |
 | **Investment Required** | ~$1,500 cash + 320h dev (Phases 0–3) |
 
 **GO/NO-GO:** **GO** — Architecture is production-grade. Execution discipline is the only variable.
@@ -40,9 +44,9 @@
 
 | ID | Task | Owner | Effort | Done Criteria |
 |----|------|-------|--------|---------------|
-| **P1-1** | Obtain Suno API key; implement `SunoProvider.generate()` | SWE | 16h | Music generated via cloud |
-| **P1-2** | Obtain Kling/Seedance API key; implement video providers | SWE | 24h | Video generated via cloud |
-| **P1-3** | Obtain Kokoro/Google TTS key; implement TTS providers | SWE | 12h | Podcast voices via cloud |
+| **P1-1** | Obtain aimlapi API key; implement `AimlapiMusicProvider.generate()` | SWE | 16h | Music generated via cloud |
+| **P1-2** | Obtain KAI API key; implement `KaiMusicProvider.generate()` | SWE | 16h | Music generated via cloud |
+| **P1-3** | Obtain Kling/Seedance API key; implement video providers | SWE | 24h | Video generated via cloud |
 | **P1-4** | Configure SHIPO with real provider costs | SWE | 4h | `finance.py` shows real $/unit |
 | **P1-5** | Test hybrid routing (local→cloud escalation) | SWE | 8h | Fallback works on local failure |
 | **P1-6** | Produce 10 pieces using cloud providers | SWE | 20h | Assets in `data/` with cloud metadata |
@@ -133,10 +137,16 @@ MUSIC_PUBLISH_ENABLED=true
 PODCAST_PUBLISH_ENABLED=true
 
 # PROVIDERS (Phase 1) — ADD REAL KEYS
-SUNO_API_KEY=your_key
+AIMLAPI_API_KEY=your_key
+AIMLAPI_BASE_URL=https://api.aimlapi.com/v1
+KAI_API_KEY=your_key
+KAI_BASE_URL=https://api.kai.ai/v1
 KLING_API_KEY=your_key
+KLING_BASE_URL=https://api.klingai.com/v1
 SEEDANCE_API_KEY=your_key
+SEEDANCE_BASE_URL=https://api.seedance.com/v1
 KOKORO_API_KEY=your_key
+KOKORO_BASE_URL=https://api.kokoro.dev/v1
 GOOGLE_TTS_CREDENTIALS=path/to/sa.json
 
 # COST CONTROL
@@ -198,4 +208,4 @@ POSTHOG_API_KEY=your_key  # optional
 
 ---
 
-**Next Action:** Begin **P0-1** — YouTube OAuth setup and test upload.
+**Next Action:** Phase 0 technical control-plane gates are complete. Enter the missing cloud provider API keys in the running Cockpit, then execute the owner-controlled production cohort (10-minute two-voice podcast, 2-minute pop-techno track, and 3-minute RTA contact-center video) with preview, rejection/retry, approval, and measured publish decisions.

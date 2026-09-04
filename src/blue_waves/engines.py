@@ -47,10 +47,12 @@ class ResearchEngine:
 class ScriptEngine:
     """ZACK's bilingual script engine with a local-first/cloud-escalation boundary."""
 
-    def __init__(self, local: TextProvider | None, cloud: TextProvider | None, governance: Governance):
+    def __init__(self, local: TextProvider | None, cloud: TextProvider | None, governance: Governance,
+                 cloud_providers: Iterable[TextProvider] | None = None):
         self.local = local
         self.cloud = cloud
         self.governance = governance
+        self.cloud_providers = list(cloud_providers or ([] if cloud is None else [cloud]))
 
     def _fallback(self, result: ResearchResult, language: Language) -> str:
         if language is Language.EN:
@@ -78,8 +80,7 @@ class ScriptEngine:
         )
         user = f"Write a 3-minute {language.value} educational script about: {result.topic}. Angle: {result.angle}."
         providers: list[TextProvider] = []
-        if language is Language.AR and self.cloud is not None:
-            providers.append(self.cloud)
+        providers.extend(self.cloud_providers)
         if self.local is not None:
             providers.append(self.local)
         for provider in providers:
@@ -89,6 +90,93 @@ class ScriptEngine:
             except ProviderUnavailable:
                 continue
         return self._fallback(result, language), "deterministic_fallback", "local"
+
+    def write_media_script(
+        self,
+        result: ResearchResult,
+        language: Language = Language.EN,
+        content_type: str = "video",
+        target_seconds: int = 180,
+        enhancement: str | None = None,
+    ) -> tuple[str, str, str]:
+        """Write narration for a media asset.
+
+        The media pipeline (video, podcast) previously spoke the raw form input
+        verbatim. This routes it through MIRA's research angle and ZACK's writing
+        so narration is a script rather than a topic string. Returns
+        (script, provider_name, inference_mode) and degrades to a deterministic
+        outline when no text provider is reachable.
+        """
+        # Natural English narration runs ~150 wpm. Ask for slightly less so TTS
+        # does not have to race to fill the target duration with filler.
+        target_words = max(60, int(target_seconds * 2.3))
+        system = (
+            "You are ZACK, an educational content writer. Write narration to be spoken aloud. "
+            "Use short sentences, concrete examples, and plain transitions. No hype, no filler, "
+            "no invented statistics, sources, customers or outcomes. Never mention being an AI. "
+            "Do not include stage directions, headings, markdown, or speaker labels."
+        )
+        brief = (
+            f"Write a {target_seconds}-second {language.value} {content_type} narration of about "
+            f"{target_words} words about: {result.topic}.\n"
+            f"Angle: {result.angle}\n"
+            f"It must answer: {'; '.join(result.questions)}\n"
+            "Open with the operational problem, walk through the method or calculation, "
+            "and close with the decision a practitioner should make."
+        )
+        if enhancement:
+            brief += f"\nRevision note from the owner: {enhancement}"
+        providers: list[TextProvider] = []
+        providers.extend(self.cloud_providers)
+        if self.local is not None:
+            providers.append(self.local)
+        for provider in providers:
+            try:
+                completion = provider.complete(system, brief)
+                text = self._clean_spoken_text(completion.text, target_words)
+                if text:
+                    return text, provider.name, completion.mode
+            except ProviderUnavailable:
+                continue
+        return self._media_fallback(result, language, content_type), "deterministic_fallback", "local"
+
+    @staticmethod
+    def _clean_spoken_text(text: str, target_words: int) -> str:
+        """Strip formatting an LLM adds that TTS would read aloud verbatim."""
+        if not text:
+            return ""
+        cleaned = re.sub(r"\*\*|__|^#+\s*|`", "", text, flags=re.MULTILINE)
+        cleaned = re.sub(r"^[-*]\s*", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r"^\s*(host|guest|narrator|speaker)\s*:", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
+        cleaned = re.sub(r"\([^)]*\)", "", cleaned)
+        lines = [line.strip() for line in cleaned.splitlines()]
+        cleaned = " ".join(line for line in lines if line)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        # A wildly over-length script makes TTS truncate mid-sentence.
+        words = cleaned.split()
+        if len(words) > target_words * 2:
+            cleaned = " ".join(words[: target_words * 2]).rstrip(",;:") + "."
+        return cleaned
+
+    def _media_fallback(self, result: ResearchResult, language: Language, content_type: str) -> str:
+        if language is Language.EN:
+            return (
+                f"{result.topic}. {result.questions[0]} "
+                f"Here is the practical version. {result.angle} "
+                f"We start with the problem as an operator meets it, then we work through the method "
+                f"step by step, and we finish with the decision it supports. "
+                f"{result.questions[1]} We answer that with the calculation itself, not with a slogan. "
+                f"{result.questions[2]} That is the part you can act on today. "
+                f"This is drawn from the owner's documented operational experience; "
+                f"anything not independently sourced is stated as judgement, not fact."
+            )
+        return (
+            f"{result.topic}. {result.questions[0]} "
+            "إليك الصورة العملية. نبدأ بالمشكلة كما يواجهها المشغّل، ثم نمر على الطريقة خطوة بخطوة، "
+            "وننتهي بالقرار الذي تدعمه. نجيب على السؤال بالحساب نفسه لا بشعار. "
+            "هذا ما يمكنك تطبيقه اليوم. يعتمد هذا على خبرة تشغيلية موثقة؛ "
+            "وما لم يُتحقق منه بشكل مستقل نذكره كرأي لا كحقيقة."
+        )
 
     def create_assets(self, result: ResearchResult, lesson_id: str | None = None) -> tuple[ContentAsset, ContentAsset]:
         assets: list[ContentAsset] = []

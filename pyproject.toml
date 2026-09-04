@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blue-waves"
-version = "0.2.0"
+version = "0.3.0"
 description = "Multi-format content studio with autonomous generation and two-gate governance"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,6 +12,13 @@ dependencies = [
     "google-auth>=2.30",
     "google-auth-oauthlib>=1.2",
     "python-dotenv>=1.0",
+    "cryptography>=42.0",
+    "numpy>=1.26",
+    "librosa>=0.10",
+    "matplotlib>=3.8",
+    "Pillow>=10.0",
+    "requests>=2.31",
+    "edge-tts>=6.1",
 ]
 
 [tool.ruff]
@@ -37,7 +44,8 @@ test = ["pytest>=8"]
 blue-waves = "blue_waves.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["blue_waves*", "vendor*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

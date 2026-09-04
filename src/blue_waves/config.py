@@ -25,6 +25,12 @@ class Settings:
     nvidia_nim_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_nim_api_key: str | None = None
     nvidia_nim_model: str | None = None
+    cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    cerebras_api_key: str | None = None
+    cerebras_model: str | None = None
+    huggingface_base_url: str = "https://router.huggingface.co/v1"
+    huggingface_api_key: str | None = None
+    huggingface_model: str | None = None
     codex_base_url: str | None = None
     codex_api_key: str | None = None
     ffmpeg_bin: str = "ffmpeg"
@@ -34,6 +40,15 @@ class Settings:
     comfyui_base_url: str | None = None
     suno_api_key: str | None = None
     suno_base_url: str = "https://api.suno.ai/v1"
+    modelscope_api_key: str | None = None
+    huggingface_media_token: str | None = None
+    enhancement_enabled: bool = True
+    enhancement_profile: str = "balanced"
+    provider_rotation_path: Path = Path("provider_rotation.json")
+    aimlapi_api_key: str | None = None
+    aimlapi_base_url: str = "https://api.aimlapi.com/v1"
+    kai_api_key: str | None = None
+    kai_base_url: str = "https://api.kai.ai/v1"
     kling_api_key: str | None = None
     kling_base_url: str = "https://api.klingai.com/v1"
     seedance_api_key: str | None = None
@@ -47,11 +62,12 @@ class Settings:
     youtube_oauth_client_secret: str | None = None
     podcast_publish_enabled: bool = False
     music_publish_enabled: bool = False
-    cockpit_host: str = "0.0.0.0"
+    cockpit_host: str = "127.0.0.1"
     cockpit_port: int = 8420
-    cockpit_secret_key: str = "change-me-in-production"
+    cockpit_secret_key: str = "secret123"
     cockpit_username: str = "hatem"
     cockpit_password_hash: str = ""
+    cockpit_public_base_url: str | None = None
     scheduler_enabled: bool = True
     scheduler_max_concurrent: int = 3
     provider_fallback_enabled: bool = True
@@ -62,6 +78,10 @@ class Settings:
     max_podcast_duration_minutes: int = 60
     max_music_duration_seconds: int = 600
     auto_approve_under_cents: int = 0
+    elevenlabs_api_key: str | None = None
+    elevenlabs_base_url: str = "https://api.elevenlabs.io/v1"
+    video_use_enabled: bool = True
+    video_use_skill_path: str = "vendor/video_use/SKILL.md"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -103,6 +123,12 @@ class Settings:
             nvidia_nim_base_url=os.getenv("NVIDIA_NIM_BASE_URL", "https://integrate.api.nvidia.com/v1"),
             nvidia_nim_api_key=os.getenv("NVIDIA_NIM_API_KEY") or None,
             nvidia_nim_model=os.getenv("NVIDIA_NIM_MODEL") or None,
+            cerebras_base_url=os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
+            cerebras_api_key=os.getenv("CEREBRAS_API_KEY") or None,
+            cerebras_model=os.getenv("CEREBRAS_MODEL") or None,
+            huggingface_base_url=os.getenv("HUGGINGFACE_BASE_URL", "https://router.huggingface.co/v1"),
+            huggingface_api_key=os.getenv("HUGGINGFACE_API_KEY") or None,
+            huggingface_model=os.getenv("HUGGINGFACE_MODEL") or None,
             codex_base_url=os.getenv("BLUE_WAVES_CODEX_BASE_URL") or None,
             codex_api_key=os.getenv("BLUE_WAVES_CODEX_API_KEY") or None,
             ffmpeg_bin=os.getenv("FFMPEG_BIN", "ffmpeg"),
@@ -112,6 +138,15 @@ class Settings:
             comfyui_base_url=os.getenv("COMFYUI_BASE_URL") or None,
             suno_api_key=os.getenv("SUNO_API_KEY") or None,
             suno_base_url=os.getenv("SUNO_BASE_URL", "https://api.suno.ai/v1"),
+            modelscope_api_key=os.getenv("MODELSCOPE_API_KEY") or None,
+            huggingface_media_token=os.getenv("HUGGINGFACE_MEDIA_TOKEN") or None,
+            enhancement_enabled=boolean("ENHANCEMENT_ENABLED", True),
+            enhancement_profile=os.getenv("ENHANCEMENT_PROFILE", "balanced"),
+            provider_rotation_path=Path(os.getenv("PROVIDER_ROTATION_PATH", "provider_rotation.json")),
+            aimlapi_api_key=os.getenv("AIMLAPI_API_KEY") or None,
+            aimlapi_base_url=os.getenv("AIMLAPI_BASE_URL", "https://api.aimlapi.com/v1"),
+            kai_api_key=os.getenv("KAI_API_KEY") or None,
+            kai_base_url=os.getenv("KAI_BASE_URL", "https://api.kai.ai/v1"),
             kling_api_key=os.getenv("KLING_API_KEY") or None,
             kling_base_url=os.getenv("KLING_BASE_URL", "https://api.klingai.com/v1"),
             seedance_api_key=os.getenv("SEEDANCE_API_KEY") or None,
@@ -125,11 +160,12 @@ class Settings:
             youtube_oauth_client_secret=os.getenv("YOUTUBE_OAUTH_CLIENT_SECRET") or None,
             podcast_publish_enabled=boolean("PODCAST_PUBLISH_ENABLED", False),
             music_publish_enabled=boolean("MUSIC_PUBLISH_ENABLED", False),
-            cockpit_host=os.getenv("COCKPIT_HOST", "0.0.0.0"),
+            cockpit_host=os.getenv("COCKPIT_HOST", "127.0.0.1"),
             cockpit_port=integer("COCKPIT_PORT", 8420),
             cockpit_secret_key=os.getenv("COCKPIT_SECRET_KEY", "change-me-in-production"),
             cockpit_username=os.getenv("COCKPIT_USERNAME", "hatem"),
             cockpit_password_hash=os.getenv("COCKPIT_PASSWORD_HASH", ""),
+            cockpit_public_base_url=os.getenv("COCKPIT_PUBLIC_BASE_URL") or None,
             scheduler_enabled=boolean("SCHEDULER_ENABLED", True),
             scheduler_max_concurrent=integer("SCHEDULER_MAX_CONCURRENT", 3),
             provider_fallback_enabled=boolean("PROVIDER_FALLBACK_ENABLED", True),
@@ -140,6 +176,10 @@ class Settings:
             max_podcast_duration_minutes=integer("BLUE_WAVES_MAX_PODCAST_DURATION_MINUTES", 60),
             max_music_duration_seconds=integer("BLUE_WAVES_MAX_MUSIC_DURATION_SECONDS", 600),
             auto_approve_under_cents=integer("BLUE_WAVES_AUTO_APPROVE_UNDER_CENTS", 0),
+            elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY") or None,
+            elevenlabs_base_url=os.getenv("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io/v1"),
+            video_use_enabled=boolean("VIDEO_USE_ENABLED", True),
+            video_use_skill_path=os.getenv("VIDEO_USE_SKILL_PATH", "vendor/video_use/SKILL.md"),
         )
 
     def ensure_data_dir(self) -> Path:

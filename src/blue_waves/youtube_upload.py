@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -63,6 +66,8 @@ class YouTubeUploadService:
         pillar: str = "education",
         language: str = "en",
         extra_tags: list[str] | None = None,
+        genre: str = "ambient",
+        mood: str = "calm",
     ) -> dict[str, Any]:
         """Generate SEO-optimized metadata for YouTube upload."""
         
@@ -96,8 +101,13 @@ class YouTubeUploadService:
             "fr": ["french", "français"],
         }
         
-        title = title_templates.get(content_type, "{topic}").format(topic=topic)
-        title = title[:95]  # Leave room for branding
+        suffixes = {"video": "Complete Tutorial", "music": f"{mood} {genre} Background Music", "podcast": "Podcast Episode"}
+        suffix = suffixes.get(content_type, "")
+        if suffix:
+            available_topic = max(1, 95 - len(suffix) - 3)
+            title = f"{topic[:available_topic].rstrip()} - {suffix}"
+        else:
+            title = topic[:95]
         
         # Build description
         desc_lines = [
@@ -182,11 +192,31 @@ class YouTubeUploadService:
         title: str,
         description: str = "",
         tags: list[str] | None = None,
+        category_id: str = "27",
         privacy_status: str = "private",
         thumbnail_path: Path | None = None,
     ) -> dict[str, Any]:
         """Upload audio file as a video (with static image) to YouTube."""
-        return self.upload_video(audio_path, title, description, tags, privacy_status=privacy_status)
+        if audio_path.suffix.lower() in {".mp4", ".mov", ".webm"}:
+            return self.upload_video(audio_path, title, description, tags, category_id=category_id, privacy_status=privacy_status)
+        fd, rendered_name = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd)
+        rendered = Path(rendered_name)
+        command = [
+            "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x083344:s=1280x720:r=30",
+            "-i", str(audio_path), "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+            "-b:a", "192k", "-movflags", "+faststart", str(rendered),
+        ]
+        try:
+            subprocess.run(command, check=True, timeout=180, capture_output=True)
+            return self.upload_video(rendered, title, description, tags, category_id=category_id, privacy_status=privacy_status)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise RuntimeError(f"could not package audio as a YouTube video: {exc}") from exc
+        finally:
+            try:
+                rendered.unlink()
+            except FileNotFoundError:
+                pass
 
     def set_thumbnail(self, video_id: str, thumbnail_path: Path) -> bool:
         """Set custom thumbnail for video."""

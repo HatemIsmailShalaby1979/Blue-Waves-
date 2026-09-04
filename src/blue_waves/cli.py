@@ -23,8 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("agents", help="show the separate Blue Waves roster")
     sub.add_parser("serve", help="start the local Blue Waves HTTP service")
     cockpit = sub.add_parser("cockpit", help="start the Cockpit web UI")
-    cockpit.add_argument("--host", default="0.0.0.0", help="host to bind to")
-    cockpit.add_argument("--port", type=int, default=8420, help="port to listen on")
+    cockpit.add_argument("--host", default=None, help="host to bind to (default: from settings)")
+    cockpit.add_argument("--port", type=int, default=None, help="port to listen on (default: from settings)")
     return parser
 
 
@@ -65,8 +65,10 @@ def main(argv: list[str] | None = None) -> int:
             serve(app)
             return 0
         elif args.command == "cockpit":
-            from .service import serve
-            serve(app, host=args.host, port=args.port)
+            from .cockpit_server import start_cockpit
+            host = args.host or app.settings.cockpit_host
+            port = args.port or app.settings.cockpit_port
+            start_cockpit(app, host=host, port=port)
             return 0
         else:
             result = run_demo(app, args.topic, args.source_url, args.source_verified)

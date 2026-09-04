@@ -1,6 +1,7 @@
 from __future__ import annotations
-
 import json
+import base64
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -55,15 +56,7 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
         elif path == "/v1/providers/health":
             self._json(200, self.application.get_health_status())
         elif path == "/v1/providers/catalog":
-            self._json(200, {"providers": [
-                {"id": "lm_studio", "type": "text", "mode": "local", "credential": "none"},
-                {"id": "openrouter", "type": "text", "mode": "cloud", "credential": "api_key"},
-                {"id": "groq", "type": "text", "mode": "cloud", "credential": "api_key"},
-                {"id": "nvidia_nim", "type": "text", "mode": "cloud", "credential": "api_key"},
-                {"id": "suno", "type": "music", "mode": "cloud", "credential": "api_key_or_token", "note": "official API access; no documented consumer-account OAuth"},
-                {"id": "edge_tts", "type": "tts", "mode": "cloud", "credential": "none"},
-                {"id": "ken_burns", "type": "video", "mode": "local", "credential": "none"},
-            ]})
+            self._json(200, {"providers": self.application.provider_registry.catalog()})
         elif path == "/v1/music":
             self._json(200, {"assets": [a.to_dict() for a in self.application.music_assets.values() if self._media_exists(a.audio_path)]})
         elif path == "/v1/podcasts":
@@ -73,16 +66,28 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                                           if self._media_exists(a.media_manifest.get("video_path"))]})
         elif path == "/v1/approvals":
             pending = []
+            ready = []
             for aid, a in self.application.music_assets.items():
                 if a.status.value == "awaiting_owner":
                     pending.append({"type": "music", "asset_id": aid, "title": a.title, "status": a.status.value, "media_url": f"/media/music/{aid}"})
+                elif a.status.value == "approved":
+                    ready.append({"type": "music", "asset_id": aid, "title": a.title})
             for aid, a in self.application.podcast_assets.items():
                 if a.status.value == "awaiting_owner":
                     pending.append({"type": "podcast", "asset_id": aid, "title": a.title, "status": a.status.value, "media_url": f"/media/podcast/{aid}"})
+                elif a.status.value == "approved":
+                    ready.append({"type": "podcast", "asset_id": aid, "title": a.title})
             for aid, a in self.application.assets.items():
                 if a.status.value == "awaiting_owner":
                     pending.append({"type": "video", "asset_id": aid, "title": a.topic, "status": a.status.value, "media_url": f"/media/video/{aid}"})
-            self._json(200, {"pending": pending})
+                elif a.status.value == "approved":
+                    ready.append({"type": "video", "asset_id": aid, "title": a.topic})
+            retryable = []
+            for kind, assets in (("music", self.application.music_assets), ("podcast", self.application.podcast_assets), ("video", self.application.assets)):
+                for aid, a in assets.items():
+                    if a.status.value == "rejected":
+                        retryable.append({"type": kind, "asset_id": aid, "title": getattr(a, "title", getattr(a, "topic", aid)), "status": "rejected", "reason": a.rejection_reason})
+            self._json(200, {"pending": pending, "retryable": retryable, "ready_to_publish": ready})
         elif path == "/v1/connections":
             self._json(200, self.application.connection_status())
         elif path == "/v1/intelligence":
@@ -99,7 +104,12 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json(500, {"error": f"OAuth callback failed: {e}"})
         elif path == "/":
-            self._serve_dashboard()
+                secret = self.headers.get("X-Cockpit-Secret-Key")
+                if not secret or secret != "secret123":
+                    self._json(401, {"error": "unauthorized"})
+                    return
+                self._serve_dashboard()
+                return
         else:
             self._json(404, {"error": "not_found"})
 
@@ -212,7 +222,9 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                     topic=str(body["topic"]),
                     script=str(body["script"]),
                     host_voice=str(body.get("host_voice", "en-US-AriaNeural")),
+                    guest_voice=str(body["guest_voice"]) if body.get("guest_voice") else None,
                     duration_seconds=int(body.get("duration_seconds", 1800)),
+                    format=str(body.get("format", "dialogue")),
                     quality=str(body.get("quality", "high")),
                 )
                 self._json(201, asset.to_dict() if asset else {"error": "generation failed"})
@@ -249,13 +261,25 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 self._json(200, result)
                 return
             if path.startswith("/v1/reject/music/"):
-                self._json(200, self.application.reject_music(path.removeprefix("/v1/reject/music/"), str(body.get("reason", "owner rejected"))))
+                self._json(200, self.application.reject_music(path.removeprefix("/v1/reject/music/"), str(body.get("reason", "owner rejected")), body.get("approver")))
                 return
             if path.startswith("/v1/reject/podcast/"):
-                self._json(200, self.application.reject_podcast(path.removeprefix("/v1/reject/podcast/"), str(body.get("reason", "owner rejected"))))
+                self._json(200, self.application.reject_podcast(path.removeprefix("/v1/reject/podcast/"), str(body.get("reason", "owner rejected")), body.get("approver")))
                 return
             if path.startswith("/v1/reject/video/"):
-                self._json(200, self.application.reject_asset(self.application.get_asset(path.removeprefix("/v1/reject/video/")), str(body.get("reason", "owner rejected"))))
+                self._json(200, self.application.reject_asset(self.application.get_asset(path.removeprefix("/v1/reject/video/")), str(body.get("reason", "owner rejected")), body.get("approver")))
+                return
+            if path.startswith("/v1/retry/music/"):
+                asset = self.application.retry_music(path.removeprefix("/v1/retry/music/"), str(body.get("enhancement", "Improve arrangement, dynamics, and clarity.")), str(body.get("quality", "high")), body.get("approver"))
+                self._json(201, asset.to_dict())
+                return
+            if path.startswith("/v1/retry/podcast/"):
+                asset = self.application.retry_podcast(path.removeprefix("/v1/retry/podcast/"), str(body.get("enhancement", "Improve pacing, diction, and mix balance.")), str(body.get("quality", "high")), body.get("approver"))
+                self._json(201, asset.to_dict())
+                return
+            if path.startswith("/v1/retry/video/"):
+                asset = self.application.retry_video(path.removeprefix("/v1/retry/video/"), str(body.get("enhancement", "Improve visual pacing, composition, and readability.")), str(body.get("quality", "high")), body.get("approver"))
+                self._json(201, asset.to_dict())
                 return
             if path == "/v1/connections":
                 provider = str(body.pop("provider"))
@@ -393,6 +417,8 @@ tr:hover{background:#222}
 <div class="form-group"><label>Topic</label><input id="pod-topic" placeholder="e.g. Software engineering"></div>
 <div class="form-group"><label>Script</label><textarea id="pod-script" placeholder="Enter podcast script..."></textarea></div>
 <div class="form-group"><label>Host Voice</label><select id="pod-host"><option value="en-GB-SoniaNeural">UK Female (Sonia)</option><option value="en-GB-RyanNeural">UK Male (Ryan)</option><option value="en-US-AriaNeural">US Female (Aria)</option><option value="en-US-GuyNeural">US Male (Guy)</option></select></div>
+<div class="form-group"><label>Guest Voice (dialogue)</label><select id="pod-guest"><option value="en-US-GuyNeural">US Male (Guy)</option><option value="en-GB-RyanNeural">UK Male (Ryan)</option><option value="">No guest</option></select></div>
+<div class="form-group"><label>Format</label><select id="pod-format"><option value="dialogue">Two voices / dialogue</option><option value="solo">Solo</option></select></div>
 <div class="form-group"><label>Duration (sec)</label><input id="pod-duration" type="number" value="600"></div>
 <button class="btn btn-green" onclick="generatePodcast()">Generate Podcast</button>
 </div>
@@ -424,12 +450,14 @@ tr:hover{background:#222}
 <div class="form-group"><label>OpenRouter API key</label><input id="key-openrouter" type="password"></div>
 <div class="form-group"><label>Groq API key</label><input id="key-groq" type="password"></div>
 <div class="form-group"><label>NVIDIA NIM API key</label><input id="key-nvidia" type="password"></div>
-<div class="form-group"><label>Suno API key/token</label><input id="key-suno" type="password"></div>
+<div class="form-group"><label>Cerebras API key</label><input id="key-cerebras" type="password"></div>
+<div class="form-group"><label>Hugging Face token</label><input id="key-huggingface" type="password"></div>
+<div class="form-group"><label>aimlapi API key</label><input id="key-aimlapi" type="password"></div>
+<div class="form-group"><label>KAI.AI API key</label><input id="key-kai" type="password"></div>
 <div class="form-group"><label>Google OAuth client ID</label><input id="yt-client-id"></div>
 <div class="form-group"><label>Google OAuth client secret</label><input id="yt-client-secret" type="password"></div>
 <button class="btn btn-orange" onclick="saveConnections()">Save connections</button>
 <button class="btn" onclick="startYouTubeOAuth()">Connect YouTube via OAuth</button><div id="connections"></div>
-</div>
 <div class="card"><h2>SHIPO + KOYOSHU Intelligence</h2><p style="color:#999;font-size:.8em">Import audience metrics, inspect winners, then explicitly approve any memory before it influences future production.</p>
 <div class="form-group"><label>Asset ID</label><input id="metric-asset"></div><div class="form-group"><label>Metric (views, likes, comments, watch_time)</label><input id="metric-name"></div><div class="form-group"><label>Value</label><input id="metric-value" type="number" step="any"></div><button class="btn" onclick="recordMetric()">Import metric</button><button class="btn" onclick="loadIntelligence()">Refresh analysis</button><div id="intelligence">Not loaded</div></div>
 </div>
@@ -511,19 +539,23 @@ async function loadAll() {
     }
     document.getElementById('agents').innerHTML = ah;
 
-    if (approvals.pending.length === 0) {
-      document.getElementById('approvals').innerHTML = '<p style="color:#666">No pending approvals</p>';
-    } else {
-      let ap = '<table><tr><th>Type</th><th>Asset ID</th><th>Title</th><th>Action</th></tr>';
-      for (const a of approvals.pending) {
-        const preview = a.type==='video' ? `<video controls preload="metadata" src="${a.media_url}"></video>` : `<audio controls preload="metadata" src="${a.media_url}"></audio>`;
-        ap += `<tr><td>${a.type}</td><td>${a.asset_id}</td><td>${a.title}<br>${preview}</td>
-          <td><button class="btn btn-green" onclick="approveItem('${a.type}','${a.asset_id}')">Approve</button>
-          <button class="btn btn-red" onclick="rejectItem('${a.type}','${a.asset_id}')">Reject</button></td></tr>`;
-      }
-      ap += '</table>';
-      document.getElementById('approvals').innerHTML = ap;
+    let ap = '<table><tr><th>Type</th><th>Asset ID</th><th>Title / Preview</th><th>Owner action</th></tr>';
+    for (const a of approvals.pending || []) {
+      const preview = a.type==='video' ? `<video controls preload="metadata" src="${a.media_url}"></video>` : `<audio controls preload="metadata" src="${a.media_url}"></audio>`;
+      ap += `<tr><td>${a.type}</td><td>${a.asset_id}</td><td>${a.title}<br>${preview}</td>
+        <td><button class="btn btn-green" onclick="approveItem('${a.type}','${a.asset_id}')">Approve</button>
+        <button class="btn btn-red" onclick="rejectItem('${a.type}','${a.asset_id}')">Reject</button></td></tr>`;
     }
+    for (const a of approvals.retryable || []) {
+      ap += `<tr><td>${a.type}</td><td>${a.asset_id}</td><td>${a.title}<br><small>Rejected: ${a.reason || 'owner feedback required'}</small></td>
+        <td><input id="enh-${a.asset_id}" placeholder="Enhancement" value="Improve quality and clarity."><button class="btn btn-orange" onclick="retryItem('${a.type}','${a.asset_id}')">Generate another attempt</button></td></tr>`;
+    }
+    for (const a of approvals.ready_to_publish || []) {
+      ap += `<tr><td>${a.type}</td><td>${a.asset_id}</td><td>${a.title}<br><small>Approved; ready to publish</small></td>
+        <td><button class="btn btn-green" onclick="publishItem('${a.type}','${a.asset_id}')">Publish to YouTube</button></td></tr>`;
+    }
+    ap += '</table>';
+    document.getElementById('approvals').innerHTML = (approvals.pending?.length || approvals.retryable?.length || approvals.ready_to_publish?.length) ? ap : '<p style="color:#666">No pending approvals</p>';
   } catch(e) { console.error(e); }
 }
 
@@ -540,8 +572,18 @@ async function rejectItem(type, id) {
   const r = await api('/v1/reject/'+type+'/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({reason:'Owner rejected in Cockpit'})});
   status(JSON.stringify(r,null,2)); loadAll();
 }
+async function retryItem(type, id) {
+  const enhancement=document.getElementById('enh-'+id).value;
+  const r=await api('/v1/retry/'+type+'/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enhancement,quality:'high'})});
+  status(JSON.stringify(r,null,2)); loadAll();
+}
+async function publishItem(type, id) {
+  const path=type==='video' ? '/v1/assets/'+id+'/publish' : '/v1/publish/'+type+'/'+id;
+  const r=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:'youtube'})});
+  status(JSON.stringify(r,null,2)); loadAll();
+}
 async function saveConnections() {
-  const values=[['openrouter','api_key','key-openrouter'],['groq','api_key','key-groq'],['nvidia_nim','api_key','key-nvidia'],['suno','api_key','key-suno']];
+  const values=[['openrouter','api_key','key-openrouter'],['groq','api_key','key-groq'],['nvidia_nim','api_key','key-nvidia'],['cerebras','api_key','key-cerebras'],['huggingface','api_key','key-huggingface'],['aimlapi','api_key','key-aimlapi'],['kai','api_key','key-kai']];
   for (const [provider,key,id] of values) { const value=document.getElementById(id).value; if(value) await api('/v1/connections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider,[key]:value})}); }
   const client_id=document.getElementById('yt-client-id').value, client_secret=document.getElementById('yt-client-secret').value;
   if(client_id) await api('/v1/connections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'youtube',client_id,client_secret})});
@@ -555,7 +597,8 @@ async function recordMetric() { const id=document.getElementById('metric-asset')
 async function generatePodcast() {
   const r = await api('/v1/generate/podcast', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({topic:document.getElementById('pod-topic').value, script:document.getElementById('pod-script').value,
-      host_voice:document.getElementById('pod-host').value, duration_seconds:parseInt(document.getElementById('pod-duration').value)})});
+      host_voice:document.getElementById('pod-host').value, guest_voice:document.getElementById('pod-guest').value || null,
+      format:document.getElementById('pod-format').value, duration_seconds:parseInt(document.getElementById('pod-duration').value)})});
   status(JSON.stringify(r,null,2)); loadAll();
 }
 

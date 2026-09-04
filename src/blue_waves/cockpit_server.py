@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from typing import Any
 
+from .agents import roster
 from .application import BlueWavesApplication
+from .cockpit_ui import DASHBOARD_HTML
+from .dialogue import supported_languages
 
 
 class CockpitApp:
@@ -39,13 +43,16 @@ class CockpitApp:
         return approvals
 
     def approve_content(self, content_type: str, asset_id: str) -> dict[str, Any]:
-        if content_type == "music":
-            return self._app.approve_music(asset_id)
-        elif content_type == "podcast":
-            return self._app.approve_podcast(asset_id)
-        elif content_type == "video":
-            asset = self._app.get_asset(asset_id)
-            return self._app.owner_approve(asset)
+        try:
+            if content_type == "music":
+                return self._app.approve_music(asset_id)
+            elif content_type == "podcast":
+                return self._app.approve_podcast(asset_id)
+            elif content_type == "video":
+                asset = self._app.get_asset(asset_id)
+                return self._app.owner_approve(asset)
+        except Exception as exc:
+            return {"error": str(exc)}
         return {"error": f"unknown content type: {content_type}"}
 
     def add_request(self, content_type: str, topic: str, priority: str = "normal",
@@ -55,6 +62,308 @@ class CockpitApp:
 
     def get_queue(self) -> list[dict[str, Any]]:
         return [r.to_dict() for r in self._app.queue.get_all()]
+
+    def get_provider_approvals(self) -> dict[str, Any]:
+        return self._app.provider_approvals.approval_status()
+
+    def approve_provider(self, provider: str, actor: str = "owner") -> dict[str, Any]:
+        return self._app.provider_approvals.approve(provider, actor)
+
+    def revoke_provider(self, provider: str) -> dict[str, Any]:
+        ok = self._app.provider_approvals.revoke(provider)
+        return {"provider": provider, "revoked": ok}
+
+    def get_provider_catalog(self) -> dict[str, Any]:
+        return {
+            "catalog": self._app.provider_registry.catalog(),
+            "approvals": self._app.provider_approvals.approval_status(),
+        }
+
+    def get_rss_feed(self) -> str:
+        base_url = self._app.settings.cockpit_public_base_url or f"http://{self._app.settings.cockpit_host}:{self._app.settings.cockpit_port}"
+        return self._app.generate_podcast_rss(base_url=base_url)
+
+    def sync_analytics(self) -> dict[str, Any]:
+        return self._app.sync_all_published_metrics()
+
+    def run_scheduler(self) -> dict[str, Any]:
+        return self._app.run_scheduler_tick()
+
+    def get_metrics(self) -> dict[str, Any]:
+        return {"metrics": self._app.store.latest_metrics()}
+
+    def get_media_kit(self) -> dict[str, Any]:
+        return self._app.generate_media_kit()
+
+    def get_sponsors(self) -> dict[str, Any]:
+        return self._app.sponsor_pipeline()
+
+    def upsert_sponsor(self, data: dict[str, Any]) -> dict[str, Any]:
+        return self._app.sponsors.upsert(data)
+
+    def sponsor_email(self, prospect_id: str, company: str = "") -> dict[str, Any]:
+        return {"email": self._app.outreach_email_for(prospect_id, company)}
+
+    # ------------------------------------------------------------------ #
+    # Expanded cockpit backend                                           #
+    # ------------------------------------------------------------------ #
+
+    def get_crew(self) -> dict[str, Any]:
+        return {"tenant_id": self._app.settings.tenant_id, "agents": roster(), "tasks": self._derive_tasks()}
+
+    def _derive_tasks(self) -> list[dict[str, Any]]:
+        """Build a lightweight task board from assets, queue and scheduler."""
+        tasks: list[dict[str, Any]] = []
+        for asset_id, asset in self._app.music_assets.items():
+            tasks.append({"agent_id": "BELAL", "name": asset.title, "content_type": "music",
+                          "asset_id": asset_id, "status": asset.status.value, "attempt": asset.attempt})
+        for asset_id, asset in self._app.podcast_assets.items():
+            tasks.append({"agent_id": "ZACK", "name": asset.topic, "content_type": "podcast",
+                          "asset_id": asset_id, "status": asset.status.value, "attempt": asset.attempt})
+        for asset_id, asset in self._app.assets.items():
+            tasks.append({"agent_id": "BELAL", "name": asset.topic, "content_type": "video",
+                          "asset_id": asset_id, "status": asset.status.value, "attempt": asset.attempt})
+        for request in self._app.queue.get_all():
+            tasks.append({"agent_id": "MIRA", "name": request.topic, "content_type": request.content_type,
+                          "queue_id": request.id, "status": request.stage, "priority": request.priority})
+        return tasks
+
+    def get_library(self) -> dict[str, Any]:
+        items = []
+        for asset_id, asset in self._app.music_assets.items():
+            d = asset.to_dict(); d["content_type"] = "music"; d["media_url"] = f"/media/music/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.audio_path); items.append(d)
+        for asset_id, asset in self._app.podcast_assets.items():
+            d = asset.to_dict(); d["content_type"] = "podcast"; d["media_url"] = f"/media/podcast/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.audio_path); items.append(d)
+        for asset_id, asset in self._app.assets.items():
+            d = asset.to_dict(); d["content_type"] = "video"; d["media_url"] = f"/media/video/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.media_manifest.get("video_path")); items.append(d)
+        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return {"count": len(items), "items": items}
+
+    @staticmethod
+    def _media_exists(path: Any) -> bool:
+        if not path:
+            return False
+        p = Path(str(path))
+        return p.exists() and p.stat().st_size > 0
+
+    def get_media_path(self, content_type: str, asset_id: str) -> str | None:
+        if content_type == "music":
+            asset = self._app.music_assets.get(asset_id)
+            return asset.audio_path if asset else None
+        if content_type == "podcast":
+            asset = self._app.podcast_assets.get(asset_id)
+            return asset.audio_path if asset else None
+        if content_type == "video":
+            asset = self._app.assets.get(asset_id)
+            return asset.media_manifest.get("video_path") if asset else None
+        return None
+
+    def reject_media(self, content_type: str, asset_id: str, reason: str = "owner rejected") -> dict[str, Any]:
+        try:
+            if content_type == "music":
+                return self._app.reject_music(asset_id, reason)
+            if content_type == "podcast":
+                return self._app.reject_podcast(asset_id, reason)
+            if content_type == "video":
+                return self._app.reject_asset(self._app.get_asset(asset_id), reason)
+        except KeyError as exc:
+            return {"error": str(exc)}
+        except Exception as exc:
+            return {"error": str(exc)}
+        return {"error": f"unknown content type: {content_type}"}
+
+    def retry_media(self, content_type: str, asset_id: str, enhancement: str, quality: str = "high") -> dict[str, Any]:
+        try:
+            if content_type == "music":
+                return self._app.retry_music(asset_id, enhancement, quality).to_dict()
+            if content_type == "podcast":
+                return self._app.retry_podcast(asset_id, enhancement, quality).to_dict()
+            if content_type == "video":
+                return self._app.retry_video(asset_id, enhancement, quality).to_dict()
+        except Exception as exc:
+            return {"error": str(exc)}
+        return {"error": f"unknown content type: {content_type}"}
+
+    def publish_media(self, content_type: str, asset_id: str, channel: str = "youtube") -> dict[str, Any]:
+        try:
+            if content_type == "music":
+                return self._app.publish_music(asset_id, channel)
+            if content_type == "podcast":
+                return self._app.publish_podcast(asset_id, channel)
+            if content_type == "video":
+                return self._app.publish(self._app.get_asset(asset_id), channel)
+        except Exception as exc:
+            return {"error": str(exc)}
+        return {"error": f"unknown content type: {content_type}"}
+
+    def get_intelligence(self) -> dict[str, Any]:
+        return self._app.intelligence()
+
+    def approve_recommendation(self, memory_id: str) -> dict[str, Any]:
+        try:
+            return self._app.approve_memory(memory_id)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def get_scheduler(self) -> dict[str, Any]:
+        return self._app.scheduler.get_stats()
+
+    def get_finance_plan(self) -> dict[str, Any]:
+        """Financial plan, targets, timeframe and owner-of-record responsibilities."""
+        status = self._app.get_finance_status()
+        monthly_cents = self._app.settings.monthly_cloud_cents
+        spend_cents = status.get("weekly_costs", 0)
+        remaining_cents = max(0, monthly_cents - spend_cents)
+        # Get SHEPO's full financial report if available
+        shepo_report = {}
+        if hasattr(self._app, 'finance') and hasattr(self._app.finance, 'get_shepo_report'):
+            shepo_report = self._app.finance.get_shepo_report()
+        return {
+            "status": status,
+            "shepo_report": shepo_report,
+            "plan": {
+                "budget_monthly_cents": monthly_cents,
+                "spent_cents": spend_cents,
+                "remaining_cents": remaining_cents,
+                "utilization_pct": round((spend_cents / monthly_cents * 100) if monthly_cents else 0, 1),
+                "goal": "Maximize media quality while staying within budget and reaching profitability",
+                "target": f"{remaining_cents / 100:.2f} USD remaining this month",
+                "time_frame": "Monthly budget (resets each month); weekly publish cadence Mon/Wed/Fri",
+            },
+            "responsibilities": [
+                {"role": "SHEPO", "responsible": "Track real costs, project revenue, flag budget overruns, recommend provider ROI optimizations"},
+                {"role": "JOE", "responsible": "Track costs, runway and revenue scenarios; surface cost alerts"},
+                {"role": "LEO", "responsible": "Queue approved publication; collect platform metrics"},
+                {"role": "BELAL", "responsible": "Produce media within quality gates; keep within budget"},
+                {"role": "ZACK", "responsible": "Draft scripts; keep generated content accurate"},
+                {"role": "KOYOSHU", "responsible": "Recommend reinvestment; flag inefficiency"},
+                {"role": "OWNER", "responsible": "Approve budget exceptions and high-cost provider terms"},
+            ],
+        }
+
+    def get_connections(self) -> dict[str, Any]:
+        """Return connection status with secrets hidden (masks/booleans only)."""
+        return self._app.connection_status()
+
+    def save_connection(self, provider: str, values: dict[str, Any]) -> dict[str, Any]:
+        return self._app.save_connection(provider, values)
+
+    def generate_media(self, content_type: str, data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            if content_type == "music":
+                asset = self._app.generate_music(
+                    topic=data.get("topic", ""),
+                    genre=data.get("genre", "cinematic"),
+                    mood=data.get("mood", "inspirational"),
+                    duration_seconds=int(data.get("duration_seconds", 180)),
+                    quality=data.get("quality", "high"),
+                )
+            elif content_type == "podcast":
+                asset = self._app.generate_podcast(
+                    topic=data.get("topic", ""),
+                    script=data.get("script", ""),
+                    host_voice=data.get("host_voice") or "",
+                    guest_voice=data.get("guest_voice"),
+                    duration_seconds=int(data.get("duration_seconds", 600)),
+                    format=data.get("format", "dialogue"),
+                    quality=data.get("quality", "high"),
+                    language=data.get("language", "en"),
+                )
+            elif content_type == "video":
+                asset = self._app.generate_video(
+                    topic=data.get("topic", ""),
+                    prompt=data.get("prompt", data.get("topic", "")),
+                    duration=int(data.get("duration", 8)),
+                    quality=data.get("quality", "high"),
+                    narration=data.get("narration", data.get("script", "")),
+                    music_mode=data.get("music_mode", "ambient"),
+                )
+            else:
+                return {"error": f"unknown content type: {content_type}"}
+            if not asset:
+                return {"error": f"{content_type} generation failed (possibly blocked by policy or provider approval)"}
+            d = asset.to_dict(); d["content_type"] = content_type
+            return d
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def get_quality_breakdown(self, asset_id: str) -> dict[str, Any]:
+        """Detailed quality breakdown for the review panel (Phase 8)."""
+        try:
+            if asset_id in self._app.music_assets:
+                asset = self._app.music_assets[asset_id]
+                check = self._app.quality_gates.check_media_asset(asset, asset.audio_path, "music")
+                return {"asset_id": asset_id, "content_type": "music", "score": check.score,
+                        "passed": check.passed, "issues": check.issues, "checked_at": check.checked_at}
+            if asset_id in self._app.podcast_assets:
+                asset = self._app.podcast_assets[asset_id]
+                check = self._app.quality_gates.check_media_asset(asset, asset.audio_path, "podcast")
+                return {"asset_id": asset_id, "content_type": "podcast", "score": check.score,
+                        "passed": check.passed, "issues": check.issues, "checked_at": check.checked_at}
+            if asset_id in self._app.assets:
+                asset = self._app.assets[asset_id]
+                check = self._app.quality_gates.check_media_asset(
+                    asset, asset.media_manifest.get("video_path"), "video")
+                return {"asset_id": asset_id, "content_type": "video", "score": check.score,
+                        "passed": check.passed, "issues": check.issues, "checked_at": check.checked_at}
+        except Exception as exc:
+            return {"error": str(exc)}
+        return {"error": f"unknown asset: {asset_id}"}
+
+    def get_video_use_status(self) -> dict[str, Any]:
+        """video-use integration status (Phase 8)."""
+        settings = self._app.settings
+        enabled = bool(getattr(settings, "video_use_enabled", False))
+        skill_path = Path(getattr(settings, "video_use_skill_path", "vendor/video_use/SKILL.md"))
+        if not skill_path.is_absolute():
+            skill_path = Path.cwd() / skill_path
+        return {
+            "enabled": enabled,
+            "skill_path": str(getattr(settings, "video_use_skill_path", "")),
+            "skill_exists": skill_path.is_file(),
+            "editor_available": bool(getattr(self._app.video_engine, "_video_use_editor", None)),
+        }
+
+    def trigger_video_use_edit(self, asset_id: str) -> dict[str, Any]:
+        """Manually trigger video-use post-production for a video asset."""
+        try:
+            asset = self._app.assets.get(asset_id)
+            if not asset:
+                return {"error": f"unknown video asset: {asset_id}"}
+            raw_path = asset.media_manifest.get("video_path")
+            if not raw_path:
+                return {"error": "asset has no video_path"}
+            editor = getattr(self._app.video_engine, "_video_use_editor", None)
+            if editor is None:
+                return {"error": "video-use editor not available (disabled or misconfigured)"}
+            result = editor.edit(
+                raw_video_path=Path(str(raw_path)),
+                transcript_text=asset.topic,
+                narration_audio_path=None,
+                topic=asset.topic,
+                duration=int(asset.media_manifest.get("duration", 8) or 8),
+            )
+            if not result.success:
+                return {"error": result.error or "video-use edit failed", "issues": result.issues}
+            # Replace the preview with the post-produced version.
+            Path(str(raw_path)).unlink(missing_ok=True)
+            assert result.output_path is not None
+            result.output_path.rename(str(raw_path))
+            asset.media_manifest["video_use_manual_edit"] = {
+                "edl_entries": len(result.edl),
+                "self_eval_score": result.self_eval_score,
+                "issues": result.issues[:5],
+            }
+            self._app.store.save_asset(asset)
+            return {"asset_id": asset_id, "status": "edited",
+                    "edl_entries": len(result.edl),
+                    "self_eval_score": result.self_eval_score,
+                    "issues": result.issues}
+        except Exception as exc:
+            return {"error": str(exc)}
 
 
 class CockpitHTTPHandler(BaseHTTPRequestHandler):
@@ -79,6 +388,49 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             self.serve_json(self.app.health())
         elif path == "/api/finance":
             self.serve_json(self.app.get_finance_status())
+        elif path == "/feed/rss.xml":
+            self.serve_rss(self.cockpit.get_rss_feed())
+        elif path == "/api/providers":
+            self.serve_json(self.cockpit.get_provider_catalog())
+        elif path == "/api/metrics":
+            self.serve_json(self.cockpit.get_metrics())
+        elif path == "/api/monetization/mediakit":
+            self.serve_json(self.cockpit.get_media_kit())
+        elif path == "/api/sponsors":
+            self.serve_json(self.cockpit.get_sponsors())
+        elif path == "/api/crew":
+            self.serve_json(self.cockpit.get_crew())
+        elif path == "/api/library":
+            self.serve_json(self.cockpit.get_library())
+        elif path == "/api/intelligence":
+            self.serve_json(self.cockpit.get_intelligence())
+        elif path == "/api/finance/plan":
+            self.serve_json(self.cockpit.get_finance_plan())
+        elif path == "/api/shepo/finance":
+            self.serve_json(self.cockpit.get_finance_plan())
+        elif path == "/api/shepo/projections":
+            plan = self.cockpit.get_finance_plan()
+            shepo = plan.get("shepo_report", {})
+            self.serve_json({
+                "revenue_projection": shepo.get("revenue_projection", {}),
+                "break_even_analysis": shepo.get("break_even_analysis", {}),
+            })
+        elif path == "/api/scheduler":
+            self.serve_json(self.cockpit.get_scheduler())
+        elif path == "/api/connections":
+            self.serve_json(self.cockpit.get_connections())
+        elif path == "/api/languages":
+            self.serve_json({"languages": supported_languages()})
+        elif path.startswith("/api/quality/"):
+            parts = path.split("/")
+            if len(parts) >= 4 and parts[3]:
+                self.serve_json(self.cockpit.get_quality_breakdown(parts[3]))
+            else:
+                self.send_error(400)
+        elif path == "/api/video-use/status":
+            self.serve_json(self.cockpit.get_video_use_status())
+        elif path.startswith("/media/"):
+            self.serve_media(path)
         else:
             self.send_error(404)
 
@@ -87,13 +439,15 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         content_length = int(self.headers.get('Content-Length', 0))
+        print(f"[DEBUG] POST: path={path}, content_length={content_length}")
         body = self.rfile.read(content_length) if content_length > 0 else b''
+        print(f"[DEBUG] POST: body_len={len(body)}, body[:100]={body[:100]}")
 
         if path.startswith("/api/approve/"):
             parts = path.split("/")
-            if len(parts) >= 4:
-                content_type = parts[2]
-                asset_id = parts[3]
+            if len(parts) >= 5:
+                content_type = parts[3]
+                asset_id = parts[4]
                 result = self.cockpit.approve_content(content_type, asset_id)
                 self.serve_json(result)
             else:
@@ -109,6 +463,98 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
                 )
                 self.serve_json(result)
             except json.JSONDecodeError:
+                self.send_error(400)
+        elif path.startswith("/api/providers/approve/"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                provider = parts[4]
+                actor = json.loads(body).get("actor", "owner") if body else "owner"
+                self.serve_json(self.cockpit.approve_provider(provider, actor))
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/providers/revoke/"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                provider = parts[4]
+                self.serve_json(self.cockpit.revoke_provider(provider))
+            else:
+                self.send_error(400)
+        elif path == "/api/analytics/sync":
+            self.serve_json(self.cockpit.sync_analytics())
+        elif path == "/api/scheduler/tick":
+            self.serve_json(self.cockpit.run_scheduler())
+        elif path == "/api/sponsors":
+            try:
+                data = json.loads(body) if body else {}
+                self.serve_json(self.cockpit.upsert_sponsor(data))
+            except json.JSONDecodeError:
+                self.send_error(400)
+        elif path.startswith("/api/sponsors/"):
+            parts = path.split("/")
+            if len(parts) >= 5 and parts[4] == "email":
+                prospect_id = parts[3]
+                company = json.loads(body).get("company", "") if body else ""
+                self.serve_json(self.cockpit.sponsor_email(prospect_id, company))
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/reject/"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                reason = json.loads(body).get("reason", "owner rejected") if body else "owner rejected"
+                self.serve_json(self.cockpit.reject_media(parts[3], parts[4], reason))
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/retry/"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                data = json.loads(body) if body else {}
+                self.serve_json(self.cockpit.retry_media(parts[3], parts[4],
+                                                          data.get("enhancement", "Improve quality and clarity."),
+                                                          data.get("quality", "high")))
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/publish/"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                data = json.loads(body) if body else {}
+                self.serve_json(self.cockpit.publish_media(parts[3], parts[4], data.get("channel", "youtube")))
+            else:
+                self.send_error(400)
+        elif path == "/api/memory/approve":
+            try:
+                data = json.loads(body) if body else {}
+                self.serve_json(self.cockpit.approve_recommendation(data.get("memory_id", "")))
+            except json.JSONDecodeError:
+                self.send_error(400)
+        elif path == "/api/connections":
+            try:
+                data = json.loads(body) if body else {}
+                provider = data.pop("provider", "")
+                result = self.cockpit.save_connection(provider, data)
+                self.serve_json(result)
+            except json.JSONDecodeError:
+                self.send_error(400)
+        elif path.startswith("/api/generate/"):
+            parts = path.split("/")
+            if len(parts) >= 4:
+                content_type = parts[3]
+                try:
+                    raw_body = body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else (body if isinstance(body, str) else "{}")
+                    print(f"[DEBUG] generate: content_type={content_type}, raw_body={raw_body[:500]}")
+                    data = json.loads(raw_body)
+                    if not isinstance(data, dict):
+                        raise TypeError("JSON body must be an object")
+                    self.serve_json(self.cockpit.generate_media(content_type, data))
+                except (json.JSONDecodeError, TypeError, AttributeError) as exc:
+                    print(f"[DEBUG] generate error: {exc}, raw_body={raw_body[:500]}")
+                    self.send_error(400)
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/video-use/edit/"):
+            parts = path.split("/")
+            if len(parts) >= 5 and parts[4]:
+                self.serve_json(self.cockpit.trigger_video_use_edit(parts[4]))
+            else:
                 self.send_error(400)
         else:
             self.send_error(404)
@@ -127,170 +573,49 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json_data.encode())
 
+    def serve_rss(self, xml: str) -> None:
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/rss+xml; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(xml.encode("utf-8"))
+
+    def serve_media(self, path: str) -> None:
+        parts = path.split("/")
+        if len(parts) != 4:
+            self.send_error(404)
+            return
+        _, _, content_type, asset_id = parts
+        raw_path = self.cockpit.get_media_path(content_type, asset_id)
+        if not raw_path:
+            self._json_err(404, {"error": "media_not_found"})
+            return
+        media = Path(str(raw_path))
+        if not media.exists() or media.stat().st_size == 0:
+            self._json_err(404, {"error": "media_not_found"})
+            return
+        mime = "video/mp4" if content_type == "video" else "audio/wav"
+        try:
+            body = media.read_bytes()
+        except OSError:
+            self._json_err(500, {"error": "media_read_failed"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json_err(self, status: int, data: Any) -> None:
+        payload = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def get_dashboard_html(self) -> str:
-        return '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blue Waves Cockpit</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #e0e0e0; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-        h1 { color: #4fc3f7; margin-bottom: 20px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
-        .card h2 { color: #81c784; margin-bottom: 15px; font-size: 1.2em; }
-        .stat { display: flex; justify-content: space-between; margin: 8px 0; }
-        .stat-label { color: #999; }
-        .stat-value { color: #fff; font-weight: bold; }
-        .btn { background: #4fc3f7; color: #000; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin: 4px; }
-        .btn:hover { background: #81d4fa; }
-        .btn-danger { background: #ef5350; }
-        .btn-danger:hover { background: #f44336; }
-        .form-group { margin: 10px 0; }
-        .form-group label { display: block; color: #999; margin-bottom: 5px; }
-        .form-group input, .form-group select { width: 100%; padding: 8px; background: #333; border: 1px solid #555; color: #fff; border-radius: 4px; }
-        #status { padding: 10px; background: #1a1a1a; border-radius: 4px; margin-top: 20px; }
-        .approval-item { background: #2a2a2a; padding: 15px; border-radius: 4px; margin: 10px 0; }
-        .approval-item h3 { color: #ffb74d; margin-bottom: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Blue Waves Cockpit v0.2.0</h1>
-        <div class="grid">
-            <div class="card">
-                <h2>System Health</h2>
-                <div id="health-status">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>Queue Status</h2>
-                <div id="queue-status">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>Finance (SHIPO)</h2>
-                <div id="finance-status">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>Pending Approvals</h2>
-                <div id="approvals">Loading...</div>
-            </div>
-            <div class="card">
-                <h2>Add Content Request</h2>
-                <div class="form-group">
-                    <label>Content Type</label>
-                    <select id="content-type">
-                        <option value="video">Video</option>
-                        <option value="music">Music</option>
-                        <option value="podcast">Podcast</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Topic</label>
-                    <input type="text" id="topic" placeholder="Enter topic...">
-                </div>
-                <div class="form-group">
-                    <label>Priority</label>
-                    <select id="priority">
-                        <option value="normal">Normal</option>
-                        <option value="high">High</option>
-                        <option value="low">Low</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Quality</label>
-                    <select id="quality">
-                        <option value="free">Free</option>
-                        <option value="standard">Standard</option>
-                        <option value="high">High</option>
-                    </select>
-                </div>
-                <button class="btn" onclick="addRequest()">Add Request</button>
-            </div>
-        </div>
-        <div id="status"></div>
-    </div>
-
-    <script>
-        async function loadDashboard() {
-            try {
-                const response = await fetch('/api/dashboard');
-                const data = await response.json();
-                document.getElementById('health-status').innerHTML = `
-                    <div class="stat"><span class="stat-label">Version:</span><span class="stat-value">${data.health.version}</span></div>
-                    <div class="stat"><span class="stat-label">Ledger:</span><span class="stat-value">${data.health.ledger_intact ? 'Intact' : 'Broken'}</span></div>
-                    <div class="stat"><span class="stat-label">Queue:</span><span class="stat-value">${data.queue.total}</span></div>
-                `;
-                document.getElementById('queue-status').innerHTML = `
-                    <div class="stat"><span class="stat-label">Pending:</span><span class="stat-value">${data.queue.pending}</span></div>
-                    <div class="stat"><span class="stat-label">Ready:</span><span class="stat-value">${data.queue.ready_to_publish}</span></div>
-                    <div class="stat"><span class="stat-label">Published:</span><span class="stat-value">${data.queue.published}</span></div>
-                `;
-                document.getElementById('finance-status').innerHTML = `
-                    <div class="stat"><span class="stat-label">Weekly:</span><span class="stat-value">$${(data.finance.weekly_costs / 100).toFixed(2)}</span></div>
-                    <div class="stat"><span class="stat-label">Music:</span><span class="stat-value">$${(data.finance.music_costs / 100).toFixed(2)}</span></div>
-                    <div class="stat"><span class="stat-label">Podcast:</span><span class="stat-value">$${(data.finance.podcast_costs / 100).toFixed(2)}</span></div>
-                `;
-            } catch (e) {
-                console.error('Failed to load dashboard:', e);
-            }
-        }
-
-        async function loadApprovals() {
-            try {
-                const response = await fetch('/api/approvals');
-                const approvals = await response.json();
-                let html = '';
-                approvals.forEach(a => {
-                    html += `<div class="approval-item">
-                        <h3>${a.type.toUpperCase()}: ${a.title}</h3>
-                        <button class="btn" onclick="approve('${a.type}', '${a.asset_id}')">Approve</button>
-                        <button class="btn btn-danger" onclick="reject('${a.type}', '${a.asset_id}')">Reject</button>
-                    </div>`;
-                });
-                document.getElementById('approvals').innerHTML = html || '<p>No pending approvals</p>';
-            } catch (e) {
-                console.error('Failed to load approvals:', e);
-            }
-        }
-
-        async function approve(type, assetId) {
-            try {
-                const response = await fetch(`/api/approve/${type}/${assetId}`, { method: 'POST' });
-                const result = await response.json();
-                document.getElementById('status').innerHTML = `<p>Approved: ${JSON.stringify(result)}</p>`;
-                loadApprovals();
-            } catch (e) {
-                console.error('Failed to approve:', e);
-            }
-        }
-
-        async function addRequest() {
-            try {
-                const contentType = document.getElementById('content-type').value;
-                const topic = document.getElementById('topic').value;
-                const priority = document.getElementById('priority').value;
-                const quality = document.getElementById('quality').value;
-                const response = await fetch('/api/request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content_type: contentType, topic, priority, quality })
-                });
-                const result = await response.json();
-                document.getElementById('status').innerHTML = `<p>Request added: ${JSON.stringify(result)}</p>`;
-            } catch (e) {
-                console.error('Failed to add request:', e);
-            }
-        }
-
-        loadDashboard();
-        loadApprovals();
-        setInterval(loadDashboard, 30000);
-    </script>
-</body>
-</html>'''
+        """Return the comprehensive single-page Cockpit dashboard."""
+        return DASHBOARD_HTML
 
     def log_message(self, format: str, *args: Any) -> None:
         """Suppress default logging."""
@@ -304,7 +629,7 @@ def start_cockpit(app: BlueWavesApplication, host: str = "0.0.0.0", port: int = 
     CockpitHTTPHandler.cockpit = cockpit
 
     server = HTTPServer((host, port), CockpitHTTPHandler)
-    print(f"Blue Waves Cockpit v0.2.0")
+    print(f"Blue Waves Cockpit v0.3.0")
     print(f"Starting server on http://{host}:{port}")
     print(f"Press Ctrl+C to stop")
 

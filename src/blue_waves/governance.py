@@ -43,6 +43,10 @@ class Governance:
         if tenant_id != self.policy.tenant_id:
             raise GovernanceViolation(f"tenant mismatch: expected {self.policy.tenant_id}, got {tenant_id}")
 
+    def assert_owner(self, actor: str) -> None:
+        if actor != self.policy.owner_actor:
+            raise GovernanceViolation("only the human owner can control a retry or rejection")
+
     def assert_publishable(self, asset: ContentAsset, channel: str, weekly_count: int) -> None:
         self.assert_tenant(asset.tenant_id)
         if channel not in self.policy.allowed_channels:
@@ -92,7 +96,11 @@ class Governance:
         return [claim.claim_id for claim in asset.claims if not claim.is_supported]
 
     def assert_autonomous_generation_allowed(self, content_type: str, weekly_count: int, estimated_cents: int) -> None:
-        """Fail-closed: check all autonomous generation constraints."""
+        """Fail-closed: check all autonomous generation constraints.
+
+        `estimated_cents` must be resolved from the selected provider before the
+        request begins; callers must not use a hardcoded zero for cloud work.
+        """
         if content_type == "video" and weekly_count >= self.policy.max_weekly_videos:
             raise GovernanceViolation(f"weekly video cap reached: {weekly_count}/{self.policy.max_weekly_videos}")
         if content_type == "music" and weekly_count >= self.policy.max_weekly_music:

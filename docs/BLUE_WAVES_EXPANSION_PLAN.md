@@ -1,8 +1,8 @@
 # Blue Waves v0.2.0 — Complete Implementation Plan
 
-## Status: CORE IMPLEMENTATION COMPLETE; CONTROL-PLANE HARDENING COMPLETE 2026-09-01
+## Status: PRODUCTION CONTROL-PLANE EXECUTION COMPLETE 2026-09-03
 
-All original waves remain implemented and tested. The hardening pass added playable previews, preview-gated approval, rejection, provider connections, YouTube OAuth plumbing, audience intelligence, and owner-approved performance memory. The suite remains at 50 passing tests.
+All original waves remain implemented and tested. The production pass added real HTTP E2E generation, playable-preview quality gates, owner-controlled reject → enhanced retry lineage, YouTube audio-to-video packaging, and all configured cloud text-provider fallback orchestration. The suite is at 52 passing tests. External cloud media adapters still require each provider's current official API contract and key; the catalog makes that limitation visible instead of pretending an unverified endpoint is production-ready.
 
 ### Control-plane hardening additions
 

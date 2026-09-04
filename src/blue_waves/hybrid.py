@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 
+from .compat import StrEnum
 from .governance import Governance, GovernanceViolation
 from .providers import OpenAICompatibleProvider, ProviderUnavailable
 
@@ -38,24 +38,29 @@ class Route:
 class HybridRouter:
     """Central compute policy: local first, cloud only where quality requires it."""
 
-    def __init__(self, governance: Governance, local: OpenAICompatibleProvider, cloud: OpenAICompatibleProvider | None):
+    def __init__(self, governance: Governance, local: OpenAICompatibleProvider,
+                 cloud: OpenAICompatibleProvider | None = None,
+                 clouds: list[OpenAICompatibleProvider] | None = None):
         self.governance = governance
         self.local = local
         self.cloud = cloud
+        self.clouds = list(clouds or ([] if cloud is None else [cloud]))
 
     def route(self, stage: Stage, cloud_requested: bool = False) -> Route:
         if stage is Stage.MOTION:
-            if self.cloud is None or not self.cloud.configured:
+            cloud = next((candidate for candidate in self.clouds if candidate.configured), None)
+            if cloud is None:
                 return Route(stage, "local_fallback", "ffmpeg", "no verified motion provider; use Ken Burns/slides")
             if self.governance.policy.monthly_cloud_cents <= 0:
                 return Route(stage, "local_fallback", "ffmpeg", "cloud budget is zero; use Ken Burns/slides")
-            return Route(stage, "cloud", self.cloud.name, "local GPU cannot generate useful motion at cadence", 1)
+            return Route(stage, "cloud", cloud.name, "local GPU cannot generate useful motion at cadence", 1)
         if stage in (Stage.BILINGUAL_REVIEW, Stage.DEEP_REVIEW) and cloud_requested:
-            if self.cloud is None or not self.cloud.configured:
+            cloud = next((candidate for candidate in self.clouds if candidate.configured), None)
+            if cloud is None:
                 return Route(stage, "local", self.local.name, "cloud requested but no configured provider; preserve work locally")
             if self.governance.policy.monthly_cloud_cents <= 0:
                 return Route(stage, "local", self.local.name, "cloud budget is zero; local model remains the default")
-            return Route(stage, "cloud", self.cloud.name, "quality-critical language/reasoning escalation", 1)
+            return Route(stage, "cloud", cloud.name, "quality-critical language/reasoning escalation", 1)
         if stage in (Stage.STILL_IMAGES, Stage.TTS, Stage.MUSIC, Stage.ASSEMBLY):
             return Route(stage, "local", "local_media_tools", "available on the workstation or Linux rendering box")
         return Route(stage, "local", self.local.name, "local-first default")

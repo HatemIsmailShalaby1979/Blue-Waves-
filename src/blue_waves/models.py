@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from enum import StrEnum
 from typing import Any
+
+from .compat import StrEnum
 
 
 def now_iso() -> str:
@@ -111,7 +112,13 @@ class ContentAsset:
     updated_at: str = field(default_factory=now_iso)
     provenance: list[str] = field(default_factory=list)
     media_manifest: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     approval_id: str | None = None
+    attempt: int = 1
+    parent_asset_id: str | None = None
+    rejection_reason: str | None = None
+    quality_score: float | None = None
+    quality_issues: list[str] = field(default_factory=list)
 
     def transition(self, target: AssetStatus) -> None:
         allowed: dict[AssetStatus, set[AssetStatus]] = {
@@ -230,7 +237,13 @@ def asset_from_dict(data: dict[str, Any]) -> ContentAsset:
         updated_at=data.get("updated_at", now_iso()),
         provenance=list(data.get("provenance", [])),
         media_manifest=dict(data.get("media_manifest", {})),
+        metadata=dict(data.get("metadata", {})),
         approval_id=data.get("approval_id"),
+        attempt=int(data.get("attempt", 1)),
+        parent_asset_id=data.get("parent_asset_id"),
+        rejection_reason=data.get("rejection_reason"),
+        quality_score=data.get("quality_score"),
+        quality_issues=list(data.get("quality_issues", [])),
     )
 
 
@@ -256,6 +269,11 @@ class MusicAsset:
     updated_at: str = field(default_factory=now_iso)
     provenance: list[str] = field(default_factory=list)
     approval_id: str | None = None
+    attempt: int = 1
+    parent_asset_id: str | None = None
+    rejection_reason: str | None = None
+    quality_score: float | None = None
+    quality_issues: list[str] = field(default_factory=list)
 
     def transition(self, target: AssetStatus) -> None:
         allowed: dict[AssetStatus, set[AssetStatus]] = {
@@ -293,6 +311,7 @@ def music_asset_from_dict(data: dict[str, Any]) -> MusicAsset:
         lyrics=data.get("lyrics", ""),
         audio_path=data.get("audio_path"),
         metadata=dict(data.get("metadata", {})),
+        media_manifest=dict(data.get("media_manifest", {})),
         provider=data.get("provider", "ace_step"),
         quality=data.get("quality", "high"),
         created_by=data.get("created_by", "BELAL"),
@@ -300,6 +319,11 @@ def music_asset_from_dict(data: dict[str, Any]) -> MusicAsset:
         updated_at=data.get("updated_at", now_iso()),
         provenance=list(data.get("provenance", [])),
         approval_id=data.get("approval_id"),
+        attempt=int(data.get("attempt", 1)),
+        parent_asset_id=data.get("parent_asset_id"),
+        rejection_reason=data.get("rejection_reason"),
+        quality_score=data.get("quality_score"),
+        quality_issues=list(data.get("quality_issues", [])),
     )
 
 
@@ -328,6 +352,11 @@ class PodcastAsset:
     updated_at: str = field(default_factory=now_iso)
     provenance: list[str] = field(default_factory=list)
     approval_id: str | None = None
+    attempt: int = 1
+    parent_asset_id: str | None = None
+    rejection_reason: str | None = None
+    quality_score: float | None = None
+    quality_issues: list[str] = field(default_factory=list)
 
     def transition(self, target: AssetStatus) -> None:
         allowed: dict[AssetStatus, set[AssetStatus]] = {
@@ -369,6 +398,7 @@ def podcast_asset_from_dict(data: dict[str, Any]) -> PodcastAsset:
         music_intro_path=data.get("music_intro_path"),
         music_outro_path=data.get("music_outro_path"),
         metadata=dict(data.get("metadata", {})),
+        media_manifest=dict(data.get("media_manifest", {})),
         tts_provider=data.get("tts_provider", "kokoro"),
         music_provider=data.get("music_provider", "ace_step"),
         created_by=data.get("created_by", "ZACK"),
@@ -376,6 +406,11 @@ def podcast_asset_from_dict(data: dict[str, Any]) -> PodcastAsset:
         updated_at=data.get("updated_at", now_iso()),
         provenance=list(data.get("provenance", [])),
         approval_id=data.get("approval_id"),
+        attempt=int(data.get("attempt", 1)),
+        parent_asset_id=data.get("parent_asset_id"),
+        rejection_reason=data.get("rejection_reason"),
+        quality_score=data.get("quality_score"),
+        quality_issues=list(data.get("quality_issues", [])),
     )
 
 

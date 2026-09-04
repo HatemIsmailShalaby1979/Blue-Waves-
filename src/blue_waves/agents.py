@@ -33,6 +33,10 @@ AGENTS: tuple[BlueWavesAgent, ...] = (
                    ("draft checklists and contract questions",), ("give binding legal advice", "sign or send contracts")),
     BlueWavesAgent("koyoshu", "KOYOSHU", "Business Analyst / Metacognition", "meta", "$0", ("ANDY", "SAMI", "Hatem"),
                    ("propose evidence-backed improvements",), ("apply proposals", "review its own governance loop")),
+    BlueWavesAgent("shepo", "SHEPO", "Finance & Profit Strategist", "advisory_action", "$0", ("ANDY",),
+                   ("track real costs per generation", "project revenue scenarios", "optimize provider spend",
+                    "flag budget overruns", "recommend pricing tiers"),
+                   ("move money", "promise returns", "approve its own financial actions")),
 )
 
 

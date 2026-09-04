@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from .config import Settings
 from .governance import Governance
@@ -19,8 +19,9 @@ class ScheduledJob:
     scheduled_for: str
     status: str = "pending"
     created_at: str = field(default_factory=now_iso)
-    priority: int = 0  # Higher = more urgent
-    recurrence: str | None = None  # "daily", "weekly", "custom"
+    priority: int = 0
+    recurrence: str | None = None
+    result: dict[str, Any] | None = None
 
 
 @dataclass
@@ -43,7 +44,8 @@ class Scheduler:
         settings: Settings, 
         governance: Governance, 
         queue: ContentQueue,
-        publish_window: PublishWindow | None = None
+        publish_window: PublishWindow | None = None,
+        executor: Callable[[ScheduledJob], dict[str, Any] | None] | None = None,
     ) -> None:
         self._settings = settings
         self._governance = governance
@@ -52,6 +54,7 @@ class Scheduler:
         self._publish_window = publish_window or PublishWindow()
         self._weekly_published = 0
         self._week_start = datetime.utcnow().date() - timedelta(days=datetime.utcnow().weekday())
+        self._executor = executor
 
     def _reset_weekly_counter(self) -> None:
         """Reset weekly counter if new week started."""
@@ -156,9 +159,113 @@ class Scheduler:
     def execute_due_jobs(self, max_concurrent: int = 3) -> list[ScheduledJob]:
         """Execute all due jobs up to max_concurrent."""
         due = self.get_due_jobs()[:max_concurrent]
+        executed = []
         for job in due:
             job.status = "running"
-        return due
+            if self._executor:
+                try:
+                    result = self._executor(job)
+                    job.result = result or {}
+                    job.status = "completed"
+                except Exception as exc:
+                    job.result = {"error": str(exc)}
+                    job.status = "failed"
+            else:
+                job.status = "completed"
+            executed.append(job)
+        return executed
+
+    def tick(self, max_jobs: int = 3, max_attempts: int = 3) -> dict[str, Any]:
+        """Run one full scheduler cycle (Phase 9 automation).
+
+        Picks up queued content requests, routes each to the correct engine
+        via the executor, retries failures with an enhancement note
+        (up to ``max_attempts``), and updates queue stages:
+
+        - success → request advances toward ``ready_to_publish``
+        - exhausted retries → request marked rejected with error
+
+        Returns a cycle summary dict. Ledger logging is performed by the
+        application layer (``run_automated_cycle``); this method stays
+        ledger-free so it remains unit-testable without an app instance.
+        """
+        queued = [r for r in self._queue.get_by_stage("queued")]
+        # Priority ordering: high first, then normal, then low.
+        order = {"high": 0, "normal": 1, "low": 2}
+        queued.sort(key=lambda r: order.get(getattr(r, "priority", "normal"), 1))
+        batch = queued[:max_jobs]
+
+        details: list[dict[str, Any]] = []
+        succeeded = 0
+        failed = 0
+
+        for request in batch:
+            # Ensure a ScheduledJob exists for traceability.
+            job = next((j for j in self._jobs if j.request_id == request.id and j.status in ("pending", "failed")), None)
+            if job is None:
+                job = ScheduledJob(
+                    job_id=f"job-{uuid.uuid4().hex[:8]}",
+                    request_id=request.id,
+                    content_type=request.content_type,
+                    scheduled_for=datetime.utcnow().isoformat(),
+                )
+                self._jobs.append(job)
+
+            last_error: str | None = None
+            asset_id: str | None = None
+            attempts_used = 0
+            for attempt in range(1, max_attempts + 1):
+                attempts_used = attempt
+                job.status = "running"
+                try:
+                    result = self._executor(job) if self._executor else {"error": "no executor configured"}
+                except Exception as exc:  # Executor raised — retryable.
+                    result = {"error": str(exc)}
+                if result and not result.get("error"):
+                    asset_id = result.get("asset_id")
+                    job.result = {**result, "attempts": attempt}
+                    job.status = "completed"
+                    last_error = None
+                    break
+                # Failure — record enhancement note for the next attempt.
+                last_error = str((result or {}).get("error", "unknown error"))
+                enhancement = f"attempt {attempt}/{max_attempts} failed: {last_error}"
+                job.result = {"error": last_error, "enhancement": enhancement, "attempts": attempt}
+                if attempt < max_attempts and self._executor:
+                    continue
+                job.status = "failed"
+
+            if job.status == "completed":
+                # Move the queue request forward so the owner can review it.
+                try:
+                    request.advance_stage()
+                except Exception:
+                    pass
+                succeeded += 1
+            else:
+                try:
+                    request.set_error(f"scheduler retries exhausted after {attempts_used} attempts: {last_error}")
+                except Exception:
+                    pass
+                failed += 1
+
+            details.append({
+                "request_id": request.id,
+                "content_type": request.content_type,
+                "topic": request.topic,
+                "status": job.status,
+                "job_id": job.job_id,
+                "asset_id": asset_id,
+                "attempts": attempts_used,
+                "error": last_error,
+            })
+
+        return {
+            "processed": len(batch),
+            "succeeded": succeeded,
+            "failed": failed,
+            "details": details,
+        }
 
     def complete_job(self, job_id: str) -> bool:
         for job in self._jobs:
@@ -183,6 +290,7 @@ class Scheduler:
             "pending": len(self.get_pending_jobs()),
             "running": len(self.get_jobs_by_status("running")),
             "completed": len(self.get_completed_jobs()),
+            "failed": len(self.get_jobs_by_status("failed")),
             "weekly_published": self._weekly_published,
             "weekly_limit": self._settings.max_weekly_publishes,
             "queue_size": self._queue.size(),

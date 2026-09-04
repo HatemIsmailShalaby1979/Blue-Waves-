@@ -131,5 +131,7 @@ def test_health_monitor_record_failure():
 def test_health_monitor_get_fallback():
     monitor = ProviderHealthMonitor()
     assert monitor.get_fallback("kling") == "seedance"
-    assert monitor.get_fallback("suno_api") == "ace_step"
+    assert monitor.get_fallback("suno_api") == "aimlapi_music"
+    assert monitor.get_fallback("kokoro") == "elevenlabs_tts"
+    assert monitor.get_fallback("elevenlabs_tts") == "edge_tts"
     assert monitor.get_fallback("unknown") == "ken_burns"
