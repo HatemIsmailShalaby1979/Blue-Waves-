@@ -208,10 +208,13 @@ class PodcastEngine:
         )
 
     def _tts_candidates(self, quality: str) -> list[Any]:
+        from .providers import without_local_pixels
         if self._providers:
-            return self._providers.configured_media_candidates("tts", quality=quality)
-        from .providers import EdgeTTSProvider, OfflineTTSProvider
-        return [EdgeTTSProvider(), OfflineTTSProvider()]
+            candidates = self._providers.configured_media_candidates("tts", quality=quality)
+        else:
+            from .providers import EdgeTTSProvider, OfflineTTSProvider
+            candidates = [EdgeTTSProvider(), OfflineTTSProvider()]
+        return without_local_pixels(candidates, self._settings)
 
     def _music_candidates(self, quality: str) -> list[Any]:
         if self._providers:

@@ -50,9 +50,11 @@ class Settings:
     kai_api_key: str | None = None
     kai_base_url: str = "https://api.kai.ai/v1"
     kling_api_key: str | None = None
-    kling_base_url: str = "https://api.klingai.com/v1"
+    kling_base_url: str = "https://api-singapore.klingai.com"
     seedance_api_key: str | None = None
     seedance_base_url: str = "https://api.seedance.com/v1"
+    pexels_api_key: str | None = None
+    pixabay_api_key: str | None = None
     kokoro_api_key: str | None = None
     kokoro_base_url: str = "https://api.kokoro.dev/v1"
     google_tts_credentials_path: str | None = None
@@ -71,6 +73,7 @@ class Settings:
     scheduler_enabled: bool = True
     scheduler_max_concurrent: int = 3
     provider_fallback_enabled: bool = True
+    allow_local_fallback: bool = True
     quality_gate_threshold: float = 0.7
     max_weekly_music: int = 20
     max_weekly_podcasts: int = 5
@@ -148,9 +151,11 @@ class Settings:
             kai_api_key=os.getenv("KAI_API_KEY") or None,
             kai_base_url=os.getenv("KAI_BASE_URL", "https://api.kai.ai/v1"),
             kling_api_key=os.getenv("KLING_API_KEY") or None,
-            kling_base_url=os.getenv("KLING_BASE_URL", "https://api.klingai.com/v1"),
+            kling_base_url=os.getenv("KLING_BASE_URL", "https://api-singapore.klingai.com"),
             seedance_api_key=os.getenv("SEEDANCE_API_KEY") or None,
             seedance_base_url=os.getenv("SEEDANCE_BASE_URL", "https://api.seedance.com/v1"),
+            pexels_api_key=os.getenv("PEXELS_API_KEY") or None,
+            pixabay_api_key=os.getenv("PIXABAY_API_KEY") or None,
             kokoro_api_key=os.getenv("KOKORO_API_KEY") or None,
             kokoro_base_url=os.getenv("KOKORO_BASE_URL", "https://api.kokoro.dev/v1"),
             google_tts_credentials_path=os.getenv("GOOGLE_TTS_CREDENTIALS_PATH") or None,
@@ -169,6 +174,7 @@ class Settings:
             scheduler_enabled=boolean("SCHEDULER_ENABLED", True),
             scheduler_max_concurrent=integer("SCHEDULER_MAX_CONCURRENT", 3),
             provider_fallback_enabled=boolean("PROVIDER_FALLBACK_ENABLED", True),
+            allow_local_fallback=boolean("BLUE_WAVES_ALLOW_LOCAL_FALLBACK", True),
             quality_gate_threshold=float(os.getenv("QUALITY_GATE_THRESHOLD", "0.7")),
             max_weekly_music=integer("BLUE_WAVES_MAX_WEEKLY_MUSIC", 20),
             max_weekly_podcasts=integer("BLUE_WAVES_MAX_WEEKLY_PODCASTS", 5),

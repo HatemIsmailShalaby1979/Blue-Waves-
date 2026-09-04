@@ -21,6 +21,8 @@ RESOLUTIONS: dict[str, tuple[int, int]] = {
     "1080p": (1920, 1080),
     "1440p": (2560, 1440),
     "4k": (3840, 2160),
+    # Vertical Shorts preset (YouTube Shorts: vertical, <=60s).
+    "short": (720, 1280),
 }
 
 
@@ -80,23 +82,29 @@ class MediaEnhancer:
         if not self.enabled:
             return self._copy_result(source, target, profile, "enhancement disabled")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Music-specific chain: resample -> stereo -> loudnorm at -14 LUFS -> limiter -> exciter
+        # Music-specific chain: resample -> stereo -> loudnorm at -14 LUFS ->
+        # gentle bus compression -> presence EQ -> limiter -> stereo widening.
+        # (Uses equalizer/acompressor: portable across ffmpeg builds, unlike
+        # firequalizer's version-sensitive gain_entry syntax.)
         command = [
             self.toolchain.ffmpeg, "-y", "-loglevel", "error", "-i", str(source),
             "-af", (
                 f"aresample={AUDIO_SAMPLE_RATE}:resampler=soxr:precision=28,"
                 f"aformat=sample_rates={AUDIO_SAMPLE_RATE}:channel_layouts=stereo,"
                 f"loudnorm=I=-14:TP=-1.5:LRA=11,"
+                f"acompressor=threshold=-18dB:ratio=3:attack=20:release=200,"
+                f"equalizer=f=250:t=q:w=1:g=1.5,"
+                f"equalizer=f=4000:t=q:w=1:g=1.5,"
+                f"equalizer=f=8000:t=h:g=2.5,"
                 f"alimiter=limit=0.96,"
-                f"firequalizer=gain_entry='0=0;1=0;250=2;500=1;1000=0;2000=1;4000=2;8000=3;16000=2',"
-                f"stereotools=mlev=0.015:slev=0.025"
+                f"stereotools=mlev=0.02:slev=0.03"
             ),
             "-c:a", "pcm_s24le", "-ar", str(AUDIO_SAMPLE_RATE), "-ac", "2", str(target),
         ]
         self._run(command, max(60, 30 + _duration_budget(source)))
         return self._result(source, target, profile, [
             "soxr_resample", "stereo_normalize", "loudnorm_-14lufs",
-            "true_peak_limit", "multiband_eq", "stereo_widen",
+            "bus_compression", "presence_eq", "true_peak_limit", "stereo_widen",
         ])
 
     def master_video(self, source: Path, target: Path, resolution: str | None = None,

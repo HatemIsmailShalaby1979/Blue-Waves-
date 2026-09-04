@@ -25,6 +25,7 @@ class VideoJob:
     quality: str = "high"
     narration: str | None = None
     music_mode: str = "ambient"
+    preferred_provider: str | None = None
     status: str = "queued"  # queued | running | completed | failed
     stage: str = "queued"
     progress: float = 0.0  # 0.0 - 100.0
@@ -40,6 +41,7 @@ class VideoJob:
             "prompt": self.prompt,
             "duration": self.duration,
             "quality": self.quality,
+            "preferred_provider": self.preferred_provider,
             "status": self.status,
             "stage": self.stage,
             "progress": round(self.progress, 1),
@@ -59,11 +61,13 @@ class JobManager:
         self._semaphore = threading.Semaphore(max_workers)
 
     def submit_video(self, topic: str, prompt: str, duration: int, quality: str = "high",
-                     narration: str | None = None, music_mode: str = "ambient") -> VideoJob:
+                     narration: str | None = None, music_mode: str = "ambient",
+                     preferred_provider: str | None = None) -> VideoJob:
         job = VideoJob(
             job_id=f"job-{uuid.uuid4().hex[:10]}",
             topic=topic, prompt=prompt, duration=duration, quality=quality,
             narration=narration, music_mode=music_mode,
+            preferred_provider=preferred_provider,
         )
         with self._lock:
             self._jobs[job.job_id] = job

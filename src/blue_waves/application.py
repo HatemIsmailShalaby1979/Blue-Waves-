@@ -41,7 +41,8 @@ class BlueWavesApplication:
         saved = {
             provider: self.connections.get(provider)
             for provider in ("openrouter", "groq", "nvidia_nim", "cerebras", "huggingface", "suno",
-                             "kling", "seedance", "kokoro", "aimlapi", "kai", "elevenlabs")
+                             "kling", "seedance", "kokoro", "aimlapi", "kai", "elevenlabs",
+                             "pexels", "pixabay")
         }
         overrides = {
             "openrouter_api_key": saved.get("openrouter", {}).get("api_key"),
@@ -56,6 +57,8 @@ class BlueWavesApplication:
             "aimlapi_api_key": saved.get("aimlapi", {}).get("api_key"),
             "elevenlabs_api_key": saved.get("elevenlabs", {}).get("api_key"),
             "kai_api_key": saved.get("kai", {}).get("api_key"),
+            "pexels_api_key": saved.get("pexels", {}).get("api_key"),
+            "pixabay_api_key": saved.get("pixabay", {}).get("api_key"),
         }
         self.settings = replace(self.settings, **{key: value for key, value in overrides.items() if value})
         self.policy = Policy(
@@ -829,6 +832,114 @@ class BlueWavesApplication:
         }, self.settings.tenant_id, "BELAL")
         return None
 
+    #: Uploaded audio extensions the ingest path accepts (ffmpeg-readable).
+    UPLOAD_AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".ogg", ".flac")
+    MAX_UPLOAD_BYTES = 150 * 1024 * 1024
+
+    def import_uploaded_music(self, filename: str, data: bytes, title: str = "",
+                              genre: str = "cinematic", mood: str = "inspirational",
+                              lyrics: str = "", source: str = "owner_upload",
+                              license_note: str = "",
+                              uploader: str | None = None) -> MusicAsset:
+        """Ingest an owner-supplied audio file (e.g. Suno web export, free-library
+        track) as a first-class MusicAsset.
+
+        The file is validated as real audio, mastered to delivery spec
+        (-14 LUFS, 48kHz stereo), and queued for owner review exactly like a
+        generated track — same gate, same approve → publish path. Raises
+        ValueError/GovernanceViolation on bad input.
+        """
+        import hashlib
+        if not data:
+            raise ValueError("uploaded file is empty")
+        if len(data) > self.MAX_UPLOAD_BYTES:
+            raise ValueError(f"uploaded file exceeds {self.MAX_UPLOAD_BYTES // (1024*1024)}MB limit")
+        ext = Path(filename or "").suffix.lower()
+        if ext not in self.UPLOAD_AUDIO_EXTENSIONS:
+            raise ValueError(f"unsupported audio type {ext or '(none)'}; use mp3 or wav")
+
+        asset_id = f"music-{uuid.uuid4().hex[:12]}"
+        music_dir = Path(self.settings.data_dir) / "music"
+        music_dir.mkdir(parents=True, exist_ok=True)
+        source_path = music_dir / f"{asset_id}.orig{ext}"
+        source_path.write_bytes(data)
+        digest = hashlib.sha256(data).hexdigest()
+
+        # Validate: real probeable audio with content (not empty/corrupt).
+        probe = self._probe_audio_file(source_path)
+        if not probe:
+            source_path.unlink(missing_ok=True)
+            raise ValueError("file is not readable audio (probe failed)")
+        duration = int(probe.get("duration", 0) or 0)
+        if duration <= 0:
+            source_path.unlink(missing_ok=True)
+            raise ValueError("audio duration is zero")
+
+        asset = MusicAsset(
+            asset_id=asset_id,
+            tenant_id=self.settings.tenant_id,
+            title=title.strip() or Path(filename).stem[:80],
+            genre=genre, mood=mood,
+            duration_seconds=duration,
+            language="en",
+            prompt=f"uploaded: {title.strip() or filename}",
+            lyrics=lyrics,
+            provider="manual_upload",
+            quality="high",
+            media_manifest={},
+            metadata={
+                "source": source,
+                "license_note": license_note,
+                "uploader": uploader or self.settings.owner_actor,
+                "original_filename": filename,
+                "source_sha256": digest,
+            },
+        )
+        asset.transition(AssetStatus.COMPOSING)
+        asset.transition(AssetStatus.MIXING)
+        try:
+            mastered = music_dir / f"{asset_id}.mastered.wav"
+            result = self.enhancer.master_music(source_path, mastered)
+            asset.audio_path = str(result.output_path)
+            asset.media_manifest["enhancement"] = result.to_dict()
+        except EnhancementError as exc:
+            asset.audio_path = str(source_path)
+            asset.media_manifest["enhancement"] = {"error": str(exc)}
+        asset.media_manifest["source_audio_path"] = str(source_path)
+        asset.transition(AssetStatus.AWAITING_OWNER)
+        self.music_assets[asset.asset_id] = asset
+        self.store.save_music(asset)
+        self._record_generation_cost("music", asset.asset_id, "manual_upload")
+        self.ledger.append("music_uploaded", {
+            "asset_id": asset.asset_id, "source": source,
+            "duration_seconds": duration, "sha256": digest[:16],
+        }, self.settings.tenant_id, "BELAL")
+        return asset
+
+    @staticmethod
+    def _probe_audio_file(path: Path) -> dict[str, Any] | None:
+        """ffprobe a file; None when unreadable. No exceptions escape."""
+        import json as _json
+        import subprocess as _subprocess
+        try:
+            out = _subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=sample_rate,channels,codec_name",
+                 "-show_entries", "format=duration",
+                 "-of", "json", str(path)],
+                check=True, timeout=30, capture_output=True, text=True,
+            ).stdout
+            data = _json.loads(out)
+            stream = (data.get("streams") or [{}])[0]
+            return {
+                "duration": float(data.get("format", {}).get("duration", 0) or 0),
+                "sample_rate": int(stream.get("sample_rate", 0) or 0),
+                "channels": int(stream.get("channels", 0) or 0),
+                "codec": stream.get("codec_name", ""),
+            }
+        except Exception:
+            return None
+
     def generate_podcast(self, topic: str, script: str, host_voice: str = "en-US-AriaNeural",
                          guest_voice: str | None = None, duration_seconds: int = 1800,
                          format: str = "dialogue", quality: str = "high",
@@ -859,7 +970,8 @@ class BlueWavesApplication:
     def generate_video(self, topic: str, prompt: str, duration: int = 5,
                        quality: str = "high", narration: str | None = None,
                        music_mode: str = "ambient",
-                       progress_cb: Any = None) -> ContentAsset | None:
+                       progress_cb: Any = None,
+                       preferred_provider: str | None = None) -> ContentAsset | None:
         estimated = self.provider_registry.estimated_cost_for("video", quality)
         self.governance.assert_autonomous_generation_allowed(
             "video", self.queue.get_weekly_count("video"), estimated
@@ -867,6 +979,7 @@ class BlueWavesApplication:
         result = self.video_engine.generate(
             topic=topic, prompt=prompt, duration=duration, quality=quality,
             narration=narration, music_mode=music_mode, progress_cb=progress_cb,
+            preferred_provider=preferred_provider,
         )
         if result.success and result.asset:
             if progress_cb:
@@ -888,13 +1001,40 @@ class BlueWavesApplication:
 
     MAX_VIDEO_JOB_SECONDS = 600
 
+    def quote_video_job(self, duration: int, quality: str = "high",
+                        provider: str | None = None) -> dict[str, Any]:
+        """Price a long-form render BEFORE spending anything.
+
+        Resolves the provider the engine would pick (or the preferred one),
+        quotes per-second cloud cost, and compares against the manually
+        recorded free-credit pool. Untracked providers (no pool recorded)
+        are allowed through — enforcement only bites once you record a
+        balance, so testing is never blocked by the budgeter.
+        """
+        candidates = self.provider_registry.configured_media_candidates("video", provider, quality)
+        from .providers import without_local_pixels
+        candidates = without_local_pixels(candidates, self.settings)
+        name = provider or (candidates[0].name if candidates else "ken_burns")
+        est_cents = self.finance.quote_video_seconds(name, duration)
+        free_remaining = self.finance.get_free_cents(name)
+        affordable = free_remaining is None or est_cents <= free_remaining
+        return {
+            "provider": name, "duration": duration,
+            "estimated_cents": est_cents,
+            "estimated_usd": round(est_cents / 100, 2),
+            "free_remaining_cents": free_remaining,
+            "affordable": affordable,
+        }
+
     def submit_video_job(self, topic: str, prompt: str, duration: int = 180,
                          quality: str = "high", narration: str | None = None,
-                         music_mode: str = "ambient") -> VideoJob:
+                         music_mode: str = "ambient",
+                         preferred_provider: str | None = None) -> VideoJob:
         """Queue a long-form video render as a background job.
 
         Returns immediately with a job the cockpit polls. Raises on invalid
-        input or governance block so bad jobs never enter the queue.
+        input, unaffordable quote, or governance block so bad jobs never
+        enter the queue.
         """
         if not (topic or "").strip():
             raise ValueError("topic is required")
@@ -902,13 +1042,21 @@ class BlueWavesApplication:
             raise ValueError("jobs are for 60s+ videos; use /api/generate/video for shorts")
         if duration > self.MAX_VIDEO_JOB_SECONDS:
             raise ValueError(f"duration capped at {self.MAX_VIDEO_JOB_SECONDS}s")
+        quote = self.quote_video_job(duration, quality, preferred_provider)
+        if not quote["affordable"]:
+            raise ValueError(
+                f"quoted ${quote['estimated_usd']:.2f} on {quote['provider']} exceeds "
+                f"recorded free balance ${quote['free_remaining_cents'] / 100:.2f} — "
+                f"shorten the video, pick stock footage, or top up")
         estimated = self.provider_registry.estimated_cost_for("video", quality)
         self.governance.assert_autonomous_generation_allowed(
             "video", self.queue.get_weekly_count("video"), estimated
         )
         job = self.jobs.submit_video(topic=topic, prompt=prompt or topic, duration=duration,
-                                     quality=quality, narration=narration, music_mode=music_mode)
-        self.ledger.append("video_job_submitted", job.to_dict(), self.settings.tenant_id, "LEO")
+                                     quality=quality, narration=narration, music_mode=music_mode,
+                                     preferred_provider=preferred_provider)
+        self.ledger.append("video_job_submitted", {**job.to_dict(), "quote": quote},
+                           self.settings.tenant_id, "LEO")
         self.jobs.run(job.job_id, self._run_video_job)
         return job
 
@@ -917,7 +1065,7 @@ class BlueWavesApplication:
         asset = self.generate_video(
             topic=job.topic, prompt=job.prompt, duration=job.duration,
             quality=job.quality, narration=job.narration, music_mode=job.music_mode,
-            progress_cb=progress,
+            progress_cb=progress, preferred_provider=job.preferred_provider,
         )
         if not asset:
             raise RuntimeError("video generation failed (see provider errors in health panel)")
@@ -1154,7 +1302,7 @@ class BlueWavesApplication:
 
     def save_connection(self, provider: str, values: dict[str, Any]) -> dict[str, Any]:
         result = self.connections.save(provider, values)
-        field_map = {"openrouter": "openrouter_api_key", "groq": "groq_api_key", "nvidia_nim": "nvidia_nim_api_key", "cerebras": "cerebras_api_key", "huggingface": "huggingface_api_key", "suno": "suno_api_key", "kling": "kling_api_key", "seedance": "seedance_api_key", "kokoro": "kokoro_api_key", "aimlapi": "aimlapi_api_key", "kai": "kai_api_key"}
+        field_map = {"openrouter": "openrouter_api_key", "groq": "groq_api_key", "nvidia_nim": "nvidia_nim_api_key", "cerebras": "cerebras_api_key", "huggingface": "huggingface_api_key", "suno": "suno_api_key", "kling": "kling_api_key", "seedance": "seedance_api_key", "kokoro": "kokoro_api_key", "aimlapi": "aimlapi_api_key", "kai": "kai_api_key", "pexels": "pexels_api_key", "pixabay": "pixabay_api_key"}
         settings_updates: dict[str, Any] = {}
         if provider in field_map and values.get("api_key"):
             settings_updates[field_map[provider]] = values["api_key"]

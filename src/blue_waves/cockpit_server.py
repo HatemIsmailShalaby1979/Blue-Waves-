@@ -327,6 +327,7 @@ class CockpitApp:
                 quality=data.get("quality", "high"),
                 narration=data.get("narration", data.get("script", "")) or None,
                 music_mode=data.get("music_mode", "ambient"),
+                preferred_provider=data.get("preferred_provider") or None,
             )
             return job.to_dict()
         except (ValueError, KeyError) as exc:
@@ -342,6 +343,69 @@ class CockpitApp:
 
     def list_video_jobs(self) -> dict[str, Any]:
         return {"jobs": [j.to_dict() for j in self._app.list_video_jobs()]}
+
+    @staticmethod
+    def parse_multipart(body: bytes, content_type: str) -> tuple[dict[str, str], dict[str, tuple[str, bytes]]]:
+        """Minimal multipart/form-data parser (no dependencies).
+
+        Returns (fields, files) where files maps field name → (filename, bytes).
+        Raises ValueError on malformed input.
+        """
+        import re
+        match = re.search(r'boundary=([^;]+)', content_type or "")
+        if not match:
+            raise ValueError("missing multipart boundary")
+        boundary = ("--" + match.group(1).strip().strip('"')).encode()
+        fields: dict[str, str] = {}
+        files: dict[str, tuple[str, bytes]] = {}
+        for part in body.split(boundary):
+            if not part.strip() or part.strip() == b"--":
+                continue
+            if b"\r\n\r\n" not in part:
+                continue
+            raw_headers, payload = part.split(b"\r\n\r\n", 1)
+            if payload.endswith(b"\r\n"):
+                payload = payload[:-2]
+            if payload.endswith(b"--"):
+                payload = payload[:-2]
+            header_text = raw_headers.decode("utf-8", errors="replace")
+            name_match = re.search(r'name="([^"]+)"', header_text)
+            if not name_match:
+                continue
+            name = name_match.group(1)
+            file_match = re.search(r'filename="([^"]*)"', header_text)
+            if file_match and file_match.group(1):
+                files[name] = (file_match.group(1), payload)
+            else:
+                fields[name] = payload.decode("utf-8", errors="replace")
+        return fields, files
+
+    def upload_music(self, content_type: str, body: bytes) -> dict[str, Any]:
+        """Ingest an owner-supplied MP3/WAV as a review-ready music track."""
+        try:
+            fields, files = self.parse_multipart(body, content_type)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        if "file" not in files:
+            return {"error": "no file part (expected field name 'file')"}
+        filename, data = files["file"]
+        try:
+            asset = self._app.import_uploaded_music(
+                filename=filename, data=data,
+                title=fields.get("title", ""),
+                genre=fields.get("genre", "cinematic") or "cinematic",
+                mood=fields.get("mood", "inspirational") or "inspirational",
+                lyrics=fields.get("lyrics", ""),
+                source=fields.get("source", "owner_upload") or "owner_upload",
+                license_note=fields.get("license_note", ""),
+            )
+        except (ValueError, KeyError) as exc:
+            return {"error": str(exc)}
+        except Exception as exc:
+            return {"error": f"upload failed: {exc}"}
+        d = asset.to_dict()
+        d["content_type"] = "music"
+        return d
 
     def get_video_use_status(self) -> dict[str, Any]:
         """video-use integration status (Phase 8)."""
@@ -473,6 +537,18 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             self.serve_json(self.cockpit.get_video_use_status())
         elif path == "/api/jobs":
             self.serve_json(self.cockpit.list_video_jobs())
+        elif path == "/api/jobs/quote":
+            query = parse_qs(parsed.query)
+            try:
+                duration = int((query.get("duration", ["180"])[0] or "180"))
+            except ValueError:
+                duration = 180
+            quality = (query.get("quality", ["high"])[0] or "high")
+            provider = (query.get("provider", [None])[0] or None)
+            try:
+                self.serve_json(self._app.quote_video_job(duration, quality, provider))
+            except Exception as exc:
+                self.serve_json({"error": str(exc)})
         elif path.startswith("/api/jobs/"):
             parts = path.split("/")
             if len(parts) >= 4 and parts[3]:
@@ -612,6 +688,9 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
                 self.serve_json(self.cockpit.submit_video_job(data))
             except json.JSONDecodeError:
                 self.send_error(400)
+        elif path == "/api/upload/music":
+            ctype = self.headers.get("Content-Type", "")
+            self.serve_json(self.cockpit.upload_music(ctype, body))
         else:
             self.send_error(404)
 

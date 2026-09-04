@@ -40,6 +40,7 @@ REQUIRE_APPROVAL = {
     "google_tts",
     "kling",
     "seedance",
+    "stock",
 }
 
 

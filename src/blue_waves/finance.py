@@ -32,6 +32,15 @@ YOUTUBE_CPM = {
     "podcast": 3.0,    # $3.00 per 1000 views (podcast)
 }
 
+# Metered cloud video billed per rendered second (provider docs, 2026-09).
+# Used by the segment budgeter to quote long-form jobs before rendering.
+VIDEO_PER_SECOND_CENTS: dict[str, float] = {
+    "kling": 13.0,     # ~$0.1274/s image-to-video
+    "seedance": 11.0,  # same class
+    "stock": 0.0,      # free commercial footage (needs free API key only)
+    "ken_burns": 0.0,  # local fallback (banned in strict production)
+}
+
 
 @dataclass
 class CostEntry:
@@ -74,6 +83,9 @@ class FinanceEngine:
         self._costs: list[CostEntry] = []
         self._free_tiers: dict[str, FreeTierStatus] = {}
         self._revenue_events: list[dict[str, Any]] = []
+        # Manually recorded free-credit pools (cents) from provider dashboards
+        # — most video APIs expose no balance endpoint. Unset = untracked.
+        self._free_cents: dict[str, int] = {}
 
     def log_cost(self, provider: str, content_type: str, asset_id: str,
                  credits: int = 0, estimated_cents: int = 0,
@@ -159,6 +171,23 @@ class FinanceEngine:
 
     def get_content_costs(self, content_type: str) -> int:
         return sum(entry.estimated_cents for entry in self._costs if entry.content_type == content_type)
+
+    def set_free_cents(self, provider: str, cents: int) -> None:
+        """Record a free-credit pool (cents) read from a provider dashboard."""
+        self._free_cents[provider] = max(0, int(cents))
+
+    def get_free_cents(self, provider: str) -> int | None:
+        """Remaining free cents, or None when no pool was recorded (untracked)."""
+        if provider not in self._free_cents:
+            return None
+        spent = self.get_total_costs().get(provider, 0)
+        return max(0, self._free_cents[provider] - spent)
+
+    def quote_video_seconds(self, provider: str, seconds: int) -> int:
+        """Estimated cloud cost (cents) for N rendered seconds on a provider."""
+        import math
+        rate = VIDEO_PER_SECOND_CENTS.get(provider, 0.0)
+        return int(math.ceil(max(0, seconds) * rate))
 
     def get_provider_cost_comparison(self) -> list[dict[str, Any]]:
         """Return cost comparison table for all providers (for cockpit display)."""

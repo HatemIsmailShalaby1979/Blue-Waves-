@@ -254,10 +254,13 @@ ALLOWED_MEDIA_HOSTS = {
     "api.aimlapi.com",
     "api.kai.ai",
     "api.klingai.com",
+    "api-singapore.klingai.com",
     "api.seedance.com",
     "api.kokoro.dev",
     "api.suno.ai",
     "api.elevenlabs.io",
+    "api.pexels.com",
+    "pixabay.com",
     "localhost",
     "127.0.0.1",
 }
@@ -276,6 +279,26 @@ def _api_request(url: str, data: bytes | None = None,
     if headers:
         merged.update(headers)
     return urllib.request.Request(url, data=data, headers=merged, method=method)
+
+
+# Local *pixel* generators: PCM synth music, gradient KenBurns video, tone TTS.
+# Banned in strict production (BLUE_WAVES_ALLOW_LOCAL_FALLBACK=false) because
+# their output cannot compete with real creators. Local *assembly* (ffmpeg
+# concat/mastering/loudnorm) creates no pixels and stays allowed, as do local
+# neural models (ACE-Step) and free-tier cloud (Edge-TTS, Kokoro Docker).
+LOCAL_PIXEL_PROVIDERS = frozenset({"local_audio_fallback", "ken_burns", "local_tts_fallback"})
+
+
+def allows_local_pixels(settings: Any) -> bool:
+    """True unless the deployment bans local pixel generation."""
+    return bool(getattr(settings, "allow_local_fallback", True))
+
+
+def without_local_pixels(candidates: list[Any], settings: Any) -> list[Any]:
+    """Drop local pixel generators when the deployment bans them."""
+    if allows_local_pixels(settings):
+        return list(candidates)
+    return [p for p in candidates if p.name not in LOCAL_PIXEL_PROVIDERS]
 
 
 def _api_root(base_url: str) -> str:
@@ -691,6 +714,135 @@ class SeedanceVideoProvider:
         )
 
 
+class StockVideoProvider:
+    """Free stock footage (Pexels, Pixabay fallback) normalized to delivery spec.
+
+    Real photographed footage under free commercial licenses — the zero-cost
+    B-roll backbone. Needs a free Pexels or Pixabay API key (2-minute signup).
+    Clips carry ambient audio only (``provides_narration = False``); the
+    engine mixes the TTS narration bed over them.
+    """
+
+    name = "stock"
+    provides_narration = False
+
+    def __init__(self, pexels_key: str | None = None, pixabay_key: str | None = None) -> None:
+        self.name = "stock"
+        self.pexels_key = (pexels_key or "").strip() or None
+        self.pixabay_key = (pixabay_key or "").strip() or None
+        self.last_license = ""
+
+    def generate(self, prompt: str, duration: int = 5, resolution: str = "720p",
+                 **kwargs: Any) -> bytes:
+        from .enhancement import RESOLUTIONS
+        width, height = RESOLUTIONS.get(resolution, RESOLUTIONS["720p"])
+        words = [w for w in prompt.lower().split() if len(w) > 3][:3]
+        query = " ".join(words) if words else "nature"
+        raw = self._fetch_clip(query)
+        return self._normalize(raw, width, height, duration)
+
+    def _fetch_clip(self, query: str) -> bytes:
+        import urllib.parse
+        errors: list[str] = []
+        if self.pexels_key:
+            try:
+                return self._fetch_pexels(query)
+            except Exception as exc:
+                errors.append(f"pexels: {exc}")
+        if self.pixabay_key:
+            try:
+                return self._fetch_pixabay(query)
+            except Exception as exc:
+                errors.append(f"pixabay: {exc}")
+        raise ProviderUnavailable(
+            "stock footage unavailable (need a free PEXELS_API_KEY or PIXABAY_API_KEY)"
+            + (f": {'; '.join(errors)}" if errors else "")
+        )
+
+    def _fetch_pexels(self, query: str) -> bytes:
+        import urllib.parse
+        params = urllib.parse.urlencode({
+            "query": query, "per_page": 5, "orientation": "landscape",
+        })
+        req = _api_request(
+            f"https://api.pexels.com/videos/search?{params}",
+            headers={"Authorization": self.pexels_key or ""},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        videos = data.get("videos") or []
+        if not videos:
+            raise ProviderUnavailable(f"pexels: no videos for {query!r}")
+        files = (videos[0].get("video_files") or [])
+        files = [f for f in files if f.get("link")]
+        if not files:
+            raise ProviderUnavailable("pexels: no downloadable files")
+        files.sort(key=lambda f: abs((f.get("width") or 1280) - 1280))
+        self.last_license = f"Pexels (free license) id={videos[0].get('id')}"
+        return self._download(files[0]["link"])
+
+    def _fetch_pixabay(self, query: str) -> bytes:
+        import urllib.parse
+        params = urllib.parse.urlencode({
+            "key": self.pixabay_key or "", "q": query, "per_page": 5,
+        })
+        req = _api_request(f"https://pixabay.com/api/videos/?{params}")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        hits = data.get("hits") or []
+        if not hits:
+            raise ProviderUnavailable(f"pixabay: no videos for {query!r}")
+        videos = (hits[0].get("videos") or {})
+        for quality in ("large", "medium", "small", "tiny"):
+            url = (videos.get(quality) or {}).get("url")
+            if url:
+                self.last_license = f"Pixabay (free license) id={hits[0].get('id')}"
+                return self._download(url)
+        raise ProviderUnavailable("pixabay: no downloadable files")
+
+    @staticmethod
+    def _download(url: str) -> bytes:
+        req = _api_request(url)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = resp.read()
+        if len(data) < 50_000:
+            raise ProviderUnavailable("stock download too small to be a clip")
+        return data
+
+    @staticmethod
+    def _normalize(raw: bytes, width: int, height: int, duration: int) -> bytes:
+        """Scale/pad any clip to the exact delivery geometry + 30fps + AAC."""
+        fd_in, in_path = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd_in)
+        fd_out, out_path = tempfile.mkstemp(suffix=".mp4")
+        os.close(fd_out)
+        try:
+            Path(in_path).write_bytes(raw)
+            command = [
+                "ffmpeg", "-y", "-loglevel", "error", "-i", in_path,
+                "-vf", (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                        f"crop={width}:{height},fps=30,format=yuv420p"),
+                "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+                "-t", str(max(1, duration)),
+                "-movflags", "+faststart", out_path,
+            ]
+            subprocess.run(command, check=True, timeout=max(90, duration * 4 + 30),
+                           capture_output=True)
+            payload = Path(out_path).read_bytes()
+            if not payload:
+                raise ProviderUnavailable("stock normalize produced empty output")
+            return payload
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise ProviderUnavailable(f"stock normalize failed: {exc}") from exc
+        finally:
+            for path in (in_path, out_path):
+                try:
+                    Path(path).unlink()
+                except FileNotFoundError:
+                    pass
+
+
 class KenBurnsProvider:
     """Local video fallback: TTS narration over an animated background with music.
 
@@ -700,6 +852,7 @@ class KenBurnsProvider:
     """
 
     VOICE = "en-US-GuyNeural"
+    provides_narration = True
 
     def __init__(self, toolchain: "Toolchain | None" = None, settings: Any = None) -> None:
         self.name = "ken_burns"
@@ -1600,6 +1753,11 @@ def configured_video_providers(settings: Any) -> dict[str, Any]:
         providers["kling"] = KlingVideoProvider(settings.kling_api_key, settings.kling_base_url)
     if settings.seedance_api_key:
         providers["seedance"] = SeedanceVideoProvider(settings.seedance_api_key, settings.seedance_base_url)
+    if getattr(settings, "pexels_api_key", None) or getattr(settings, "pixabay_api_key", None):
+        providers["stock"] = StockVideoProvider(
+            getattr(settings, "pexels_api_key", None),
+            getattr(settings, "pixabay_api_key", None),
+        )
     providers["ken_burns"] = KenBurnsProvider()
     return providers
 
@@ -1645,6 +1803,7 @@ class ProviderRegistry:
             "local_tts_fallback": ProviderCapability("local_tts_fallback", ("tts",), mode="local", free_tier=True, estimated_cents=0, quality_rank=25),
             "kling": ProviderCapability("kling", ("video",), quality_rank=95, estimated_cents=50),
             "seedance": ProviderCapability("seedance", ("video",), quality_rank=85, estimated_cents=30),
+            "stock": ProviderCapability("stock", ("video",), free_tier=True, estimated_cents=0, quality_rank=70),
             "ken_burns": ProviderCapability("ken_burns", ("video",), mode="local", free_tier=True, estimated_cents=0, quality_rank=40),
         }
         for capability in capabilities.values():
@@ -1739,8 +1898,8 @@ class ProviderRegistry:
             # Cloud first: elevenlabs → kokoro → google_tts → edge_tts → local fallback
             names.extend(("elevenlabs_tts", "kokoro", "google_tts", "edge_tts", "local_tts_fallback"))
         else:
-            # Cloud first: kling → seedance → ken_burns (local)
-            names.extend(("kling", "seedance", "ken_burns"))
+            # Cloud first: kling → seedance → stock (free footage) → ken_burns (local)
+            names.extend(("kling", "seedance", "stock", "ken_burns"))
         unique_names = list(dict.fromkeys(name for name in names if name))
         ordered_names = self._rotation.ordered(unique_names, preferred=preferred, quality=quality)
         eligible: list[Any] = []
@@ -1780,6 +1939,7 @@ class ProviderRegistry:
             {"id": "edge_tts", "type": "tts", "mode": "cloud", "credential": "none", "free_quota": "free", "configured": True},
             {"id": "kling", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "kling" in self._video},
             {"id": "seedance", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "seedance" in self._video},
+            {"id": "stock", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "free (Pexels/Pixabay key)", "configured": "stock" in self._video},
             {"id": "ken_burns", "type": "video", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},
             {"id": "local_audio_fallback", "type": "music", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},
             {"id": "local_tts_fallback", "type": "tts", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},

@@ -105,6 +105,8 @@ class VideoEngine:
         )
 
         providers = self._provider_candidates(preferred_provider, quality)
+        from .providers import without_local_pixels
+        providers = without_local_pixels(providers, self._settings)
         is_long = duration >= MULTI_SCENE_THRESHOLD
         num_scenes = min(MAX_SCENES, max(2, duration // SCENE_TARGET_SECONDS)) if is_long else 1
         scene_duration = duration / num_scenes
@@ -115,6 +117,14 @@ class VideoEngine:
         ] if is_long else []
 
         errors: list[str] = []
+        if not providers:
+            asset.transition(AssetStatus.REJECTED)
+            return VideoGenerationResult(
+                success=False, asset=asset,
+                error=("local pixel generation is disabled (BLUE_WAVES_ALLOW_LOCAL_FALLBACK=false) "
+                       "and no cloud video provider is configured — add a funded Kling/native key, "
+                       "use stock footage, or submit a shorter test render"),
+            )
         for provider in providers:
           reservation = None
           try:
@@ -146,6 +156,17 @@ class VideoEngine:
             if progress_cb:
                 progress_cb("scenes rendered", 55.0)
 
+            # Cloud/stock clips carry no narration — mix a TTS bed over them so
+            # every video is narrated regardless of which provider rendered it.
+            if not getattr(provider, "provides_narration", provider.name == "ken_burns"):
+                try:
+                    if progress_cb:
+                        progress_cb("narration bed", 57.0)
+                    self._mix_narration_bed(video_path, narration or prompt, duration)
+                    asset.metadata["narration_bed"] = True
+                except Exception as exc:
+                    asset.metadata["narration_bed_error"] = str(exc)[:200]
+
             # Post-production via video-use: overlays, transitions, color grading,
             # captioning, chapter cards, YouTube-spec encoding. This bridges the
             # quality gap between "raw render" and "real YouTube video".
@@ -153,14 +174,19 @@ class VideoEngine:
                 try:
                     if progress_cb:
                         progress_cb("post-production (video-use)", 60.0)
+                    from .enhancement import RESOLUTIONS as _RES
+                    out_w, out_h = _RES.get(
+                        resolution or "",
+                        ((1920, 1080) if quality in ("high", "premium") else (1280, 720)),
+                    )
                     edit_result = self._video_use_editor.edit(
                         raw_video_path=Path(video_path),
                         transcript_text=narration or prompt,
                         narration_audio_path=None,
                         topic=topic,
                         duration=duration,
-                        width=1920 if quality in ("high", "premium") else 1280,
-                        height=1080 if quality in ("high", "premium") else 720,
+                        width=out_w,
+                        height=out_h,
                         chapters=chapters,
                     )
                     if edit_result.success and edit_result.output_path:
@@ -210,6 +236,82 @@ class VideoEngine:
             errors.append(f"{provider.name}: {exc}")
         asset.transition(AssetStatus.REJECTED)
         return VideoGenerationResult(success=False, asset=asset, error="; ".join(errors))
+
+    def _mix_narration_bed(self, video_path: str, narration: str, duration: int) -> None:
+        """Mix a TTS narration track over a provider clip that has none.
+
+        Cloud and stock clips arrive without speech. The full narration is
+        synthesized once (free Edge voice), padded to the video length, and
+        mixed under it — clip ambience kept where present, narration kept
+        everywhere. Assembly only: creates no visuals.
+        """
+        text = (narration or "").strip()
+        if not text:
+            return
+        tts = None
+        if self._providers:
+            try:
+                tts = self._providers.get_tts_provider("edge_tts")
+            except Exception:
+                tts = None
+        if tts is None:
+            from .providers import EdgeTTSProvider
+            tts = EdgeTTSProvider()
+        tmpdir = Path(tempfile.mkdtemp(prefix="bw-narr-"))
+        try:
+            parts: list[Path] = []
+            for i in range(0, len(text), 8000):
+                chunk = text[i:i + 8000]
+                audio = tts.generate(text=chunk, voice_id="en-US-GuyNeural")
+                part = tmpdir / f"narr-{i // 8000:02d}.mp3"
+                part.write_bytes(audio)
+                parts.append(part)
+            if len(parts) == 1:
+                narr_src = parts[0]
+            else:
+                narr_src = tmpdir / "narr.mp3"
+                file_list = tmpdir / "parts.txt"
+                file_list.write_text("".join(f"file '{p.as_posix()}'\n" for p in parts))
+                subprocess.run(
+                    [self._settings.ffmpeg_bin, "-y", "-loglevel", "error",
+                     "-f", "concat", "-safe", "0", "-i", str(file_list),
+                     "-c", "copy", str(narr_src)],
+                    check=True, timeout=120, capture_output=True,
+                )
+            mixed = tmpdir / "mixed.mp4"
+            ambience_mix = [
+                self._settings.ffmpeg_bin, "-y", "-loglevel", "error",
+                "-i", video_path, "-i", str(narr_src),
+                "-filter_complex",
+                (f"[0:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.25[amb];"
+                 f"[1:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=1.0,"
+                 f"apad=whole_dur={duration}[sp];"
+                 f"[amb][sp]amix=inputs=2:duration=longest:dropout_transition=2,"
+                 f"atrim=0:{duration}[out]"),
+                "-map", "0:v", "-map", "[out]",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+                "-t", str(duration), str(mixed),
+            ]
+            probe = subprocess.run(ambience_mix, capture_output=True,
+                                   timeout=max(120, duration * 2 + 30))
+            if probe.returncode != 0 or not mixed.is_file() or mixed.stat().st_size == 0:
+                # Clip has no usable audio track — carry narration alone.
+                subprocess.run(
+                    [self._settings.ffmpeg_bin, "-y", "-loglevel", "error",
+                     "-i", video_path, "-i", str(narr_src),
+                     "-map", "0:v", "-map", "1:a",
+                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                     "-ar", "48000", "-ac", "2",
+                     "-af", f"apad=whole_dur={duration}", "-t", str(duration),
+                     str(mixed)],
+                    check=True, timeout=max(120, duration * 2 + 30), capture_output=True,
+                )
+            if not mixed.is_file() or mixed.stat().st_size == 0:
+                raise RuntimeError("narration mix produced empty output")
+            os.replace(str(mixed), video_path)
+        finally:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _render_scenes(self, provider: Any, prompt: str, sections: list[str],
                        scene_duration: float, num_scenes: int, resolution: str,

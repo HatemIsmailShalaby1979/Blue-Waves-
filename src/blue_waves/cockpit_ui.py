@@ -369,6 +369,20 @@ LOADERS.generate = async function(){
         <label>Quality</label><select id="g-m-q"><option>free</option><option>standard</option><option selected>high</option></select>
         <button class="btn" onclick="genMusic()">Generate Music</button>
       </div>
+      <div class="card"><h2>Upload Music (MP3/WAV)</h2>
+        <p class="muted small">Bring your own track — Suno web export or free-library music (YT Audio Library, Pixabay). Validated, mastered to −14 LUFS, queued for review like generated tracks.</p>
+        <label>Audio file</label><input id="u-m-file" type="file" accept=".mp3,.wav,.m4a,.ogg,.flac,audio/*">
+        <label>Title</label><input id="u-m-title" placeholder="e.g. Ocean Waves at Dawn">
+        <div class="row">
+          <div style="flex:1"><label>Genre</label><input id="u-m-genre" value="cinematic"></div>
+          <div style="flex:1"><label>Mood</label><input id="u-m-mood" value="inspirational"></div>
+        </div>
+        <label>Source</label><select id="u-m-source"><option value="suno_web">Suno web export</option><option value="youtube_audio_library">YouTube Audio Library</option><option value="pixabay">Pixabay Music</option><option value="other_free">Other free-licensed</option></select>
+        <label>License note</label><input id="u-m-license" placeholder="e.g. YT Audio Library, cleared for monetization">
+        <label>Lyrics (optional)</label><textarea id="u-m-lyrics" rows="2"></textarea>
+        <button class="btn" onclick="uploadMusic()">Upload & Queue for Review</button>
+        <div id="u-m-status" class="small muted" style="margin-top:8px"></div>
+      </div>
       <div class="card"><h2>Generate Podcast</h2>
         <label>Topic</label><input id="g-p-topic" placeholder="e.g. The science of sleep">
         <label>Language</label><select id="g-p-lang" onchange="loadVoices()">${langOpts}</select>
@@ -387,9 +401,11 @@ LOADERS.generate = async function(){
       <div class="card"><h2>Generate Video</h2>
         <label>Topic</label><input id="g-v-topic" placeholder="e.g. How batteries work">
         <label>Scene description</label><textarea id="g-v-prompt" rows="2" placeholder="Describe what should be shown"></textarea>
-        <label>Duration (s, max 600)</label><input id="g-v-dur" value="20">
-        <label>Quality</label><select id="g-v-q"><option>free</option><option>standard</option><option selected>high</option></select>
+        <label>Duration (s, max 600)</label><input id="g-v-dur" value="20" onchange="refreshQuote()">
+        <label>Quality</label><select id="g-v-q" onchange="refreshQuote()"><option>free</option><option>standard</option><option selected>high</option></select>
+        <label>Scene provider (60s+ jobs)</label><select id="g-v-prov" onchange="refreshQuote()"><option value="">Auto (best available)</option><option value="stock">Stock footage ($0 B-roll)</option><option value="kling">Kling cloud (metered)</option><option value="seedance">Seedance cloud (metered)</option></select>
         <p class="muted small">Narration is always English. High quality renders 1080p. 60s+ runs as a background job (multi-scene + chapters) with live progress below.</p>
+        <p class="muted small" id="g-v-quote"></p>
         <button class="btn" onclick="genVideo()">Generate Video</button>
         <div id="g-v-job" style="margin-top:10px"></div>
       </div>
@@ -405,7 +421,7 @@ LOADERS.generate = async function(){
         <button class="btn" onclick="genQueue()">Add Request</button>
       </div>
     </div>`;
-  loadVoices(); refreshJobs();
+  loadVoices(); refreshJobs(); refreshQuote();
 };
 async function genMusic(){ const b={topic:val('g-m-topic'),genre:val('g-m-genre'),mood:val('g-m-mood'),duration_seconds:+val('g-m-dur')||180,quality:sel('g-m-q')}; try{await api('/api/generate/music',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Music generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
 async function loadVoices(){
@@ -419,8 +435,22 @@ async function loadVoices(){
   } catch(e){ /* keep previous options */ }
 }
 async function genPodcast(){ const b={topic:val('g-p-topic'),language:sel('g-p-lang')||'en',script:val('g-p-script'),duration_seconds:+val('g-p-dur')||600,quality:sel('g-p-q'),host_name:val('g-p-hname')||'Host',guest_name:val('g-p-gname')||'Guest',host_voice:sel('g-p-hvoice')||'',guest_voice:sel('g-p-gvoice')||''}; try{await api('/api/generate/podcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Podcast generated'); showSection('library');}catch(e){toast('Error: '+e.message);} }
+async function refreshQuote(){
+  const el = document.getElementById('g-v-quote');
+  if (!el) return;
+  const dur = +val('g-v-dur')||20;
+  if (dur < 60) { el.textContent = ''; return; }
+  try {
+    const q = await api('/api/jobs/quote?duration='+dur+'&quality='+encodeURIComponent(sel('g-v-q'))
+      +'&provider='+encodeURIComponent(sel('g-v-prov')||''));
+    el.textContent = q.error ? ('Quote: '+q.error)
+      : (`Quote: $${q.estimated_usd.toFixed(2)} via ${q.provider}` +
+         (q.free_remaining_cents==null ? ' (no free balance recorded — testing mode)'
+          : (` · free left $${(q.free_remaining_cents/100).toFixed(2)}` + (q.affordable?'':' · OVER BUDGET — job will be refused'))));
+  } catch(e){ el.textContent = ''; }
+}
 async function genVideo(){
-  const b={topic:val('g-v-topic'),prompt:val('g-v-prompt')||val('g-v-topic'),duration:+val('g-v-dur')||20,quality:sel('g-v-q')};
+  const b={topic:val('g-v-topic'),prompt:val('g-v-prompt')||val('g-v-topic'),duration:+val('g-v-dur')||20,quality:sel('g-v-q'),preferred_provider:sel('g-v-prov')||undefined};
   if (b.duration >= 60) {
     try {
       const job = await api('/api/jobs/video',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
@@ -458,6 +488,28 @@ async function refreshJobs(){
   } catch(e){ el.innerHTML = '<p class="bad small">'+esc(e.message)+'</p>'; }
 }
 async function genQueue(){ const b={content_type:sel('g-c-type'),topic:val('g-c-topic'),priority:sel('g-c-pri'),quality:sel('g-c-q')}; try{await api('/api/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}); toast('Added to queue'); showSection('overview');}catch(e){toast('Error: '+e.message);} }
+async function uploadMusic(){
+  const inp = document.getElementById('u-m-file');
+  const st = document.getElementById('u-m-status');
+  if (!inp || !inp.files || !inp.files[0]) { toast('Choose an MP3/WAV file first'); return; }
+  const fd = new FormData();
+  fd.append('file', inp.files[0]);
+  fd.append('title', val('u-m-title'));
+  fd.append('genre', val('u-m-genre')||'cinematic');
+  fd.append('mood', val('u-m-mood')||'inspirational');
+  fd.append('source', sel('u-m-source')||'owner_upload');
+  fd.append('license_note', val('u-m-license'));
+  fd.append('lyrics', document.getElementById('u-m-lyrics').value.trim());
+  st.textContent = 'Uploading and mastering…';
+  try {
+    const r = await fetch('/api/upload/music', {method:'POST', body:fd});
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    st.textContent = '';
+    toast('Uploaded: '+data.asset_id+' — review it in the library');
+    showSection('library');
+  } catch(e){ st.textContent = ''; toast('Upload error: '+e.message); }
+}
 function val(id){return document.getElementById(id).value.trim();}
 function sel(id){return document.getElementById(id).value;}
 
@@ -531,6 +583,8 @@ const PROVIDER_FIELDS = [
   ['suno','Suno (music) — no public API key exists; leave empty, music routes via aimlapi',['api_key']],
   ['kling','Kling (video)',['api_key']],
   ['seedance','Seedance (video)',['api_key']],
+  ['pexels','Pexels (free stock video)',['api_key']],
+  ['pixabay','Pixabay (free stock video)',['api_key']],
   ['kokoro','Kokoro (tts) — blank key + local base URL for Docker (e.g. http://localhost:8880/v1)',['api_key','base_url']],
   ['elevenlabs','ElevenLabs (tts)',['api_key','base_url']],
   ['aimlapi','aimlapi (music)',['api_key']],

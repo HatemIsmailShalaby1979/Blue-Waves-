@@ -166,7 +166,13 @@ class QualityGates:
                             if duration <= 0:
                                 issues.append("video duration is zero")
                                 score -= 0.3
-                            if width < 1280 or height < 720:
+                            manifest = getattr(asset, "media_manifest", None) or {}
+                            if manifest.get("resolution") == "short":
+                                # Vertical Shorts: 720x1280 delivery.
+                                if width < 700 or height < 1200:
+                                    issues.append("shorts resolution below 720x1280")
+                                    score -= 0.3
+                            elif width < 1280 or height < 720:
                                 issues.append("video resolution below 720p")
                                 score -= 0.3
                             if frame_rate and frame_rate < 23:
