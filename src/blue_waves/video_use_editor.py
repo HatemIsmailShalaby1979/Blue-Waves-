@@ -287,7 +287,9 @@ class VideoUseEditor:
         - Fade in/out transitions
         - YouTube delivery spec: H.264 CRF 18, preset slow, 48kHz AAC, -14 LUFS
         """
-        fd, output_path_str = tempfile.mkstemp(suffix=".mp4")
+        # Render next to the source so the caller can atomically replace it
+        # (tempfile's default dir may live on another drive, where rename fails).
+        fd, output_path_str = tempfile.mkstemp(suffix=".mp4", dir=str(raw_video_path.parent))
         os.close(fd)
         output_path = Path(output_path_str)
 
@@ -374,7 +376,7 @@ class VideoUseEditor:
             import json as _json
             probe = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries",
-                 "stream=width,height,codec_name,duration,bit_rate",
+                 "stream=codec_type,width,height,codec_name,duration,bit_rate",
                  "-of", "json", str(output_path)],
                 check=True, timeout=30, capture_output=True, text=True,
             )
@@ -392,7 +394,7 @@ class VideoUseEditor:
                     score -= 0.2
 
             # Check audio stream
-            a_stream = next((s for s in streams if "audio" in s.get("codec_name", "")), None)
+            a_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
             if not a_stream:
                 issues.append("no audio stream found")
                 score -= 0.3

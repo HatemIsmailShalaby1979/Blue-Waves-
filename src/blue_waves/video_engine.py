@@ -106,9 +106,20 @@ class VideoEngine:
                         height=1080 if quality in ("high", "premium") else 720,
                     )
                     if edit_result.success and edit_result.output_path:
-                        # Replace raw video with post-produced version
-                        Path(video_path).unlink(missing_ok=True)
-                        edit_result.output_path.rename(video_path)
+                        # Replace raw video with post-produced version.
+                        # shutil.move survives cross-drive temp dirs where rename fails;
+                        # the raw file is only removed after the move succeeds.
+                        import shutil
+                        tmp_out = Path(edit_result.output_path)
+                        raw = Path(video_path)
+                        backup = raw.with_name(raw.stem + ".raw" + raw.suffix)
+                        raw.replace(backup)
+                        try:
+                            shutil.move(str(tmp_out), str(raw))
+                        except Exception:
+                            backup.replace(raw)
+                            raise
+                        backup.unlink(missing_ok=True)
                         asset.metadata["video_use"] = {
                             "transcript": edit_result.transcript[:500],
                             "edl_entries": len(edit_result.edl),

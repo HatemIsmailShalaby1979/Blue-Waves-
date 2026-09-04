@@ -348,10 +348,18 @@ class CockpitApp:
             )
             if not result.success:
                 return {"error": result.error or "video-use edit failed", "issues": result.issues}
-            # Replace the preview with the post-produced version.
-            Path(str(raw_path)).unlink(missing_ok=True)
+            # Replace the preview with the post-produced version (cross-drive safe).
+            import shutil
             assert result.output_path is not None
-            result.output_path.rename(str(raw_path))
+            raw = Path(str(raw_path))
+            backup = raw.with_name(raw.stem + ".raw" + raw.suffix)
+            raw.replace(backup)
+            try:
+                shutil.move(str(result.output_path), str(raw))
+            except Exception:
+                backup.replace(raw)
+                raise
+            backup.unlink(missing_ok=True)
             asset.media_manifest["video_use_manual_edit"] = {
                 "edl_entries": len(result.edl),
                 "self_eval_score": result.self_eval_score,
