@@ -41,7 +41,7 @@ Approval is blocked if the preview is missing, empty, or below gate. The owner s
 - Revenue is **$0**. The studio is pre-revenue. The projection in SHEPO is a model, not a receipt. See `PROFIT_AUDIT_2026-09-01.md`.
 - The container image has **never been built**. The sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface instead.
 - Nine production-only gates remain red by design: no certified data isolation, no external observer audit, and no legal privacy review, among others. See `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md`.
-- The repository was changed to **private** on 2026-09-21, verified with `git ls-remote`.
+- The repository is **public**, verified 2026-09-25 by unauthenticated request to the GitHub API and by `git ls-remote` without credentials. Earlier documents here recorded a 2026-09-21 visibility change to private; that no longer matches reality.
 - Production-scale revenue and the SaaS-pivot GO/NO-GO remain open decisions tracked in `DECISIONS.md`.
 
 ## Component status, snapshot 2026-09-05
@@ -84,9 +84,20 @@ Blue Waves does not make money and is not a production deployment. It has no cer
 
 ## The founder's story
 
-I spent twenty-eight years in contact-centre operations and workforce management.
-Forecasting, scheduling, adherence, service levels, churn. The same problems
-appeared in every company I worked in, and none of the tools solved them properly.
+I spent twenty-eight years in operations. The first fourteen were the
+foundation: ground operations and real-time traffic management at Hurghada
+International Airport, then Air Berlin, where I directed ground operations
+through the 2011 regional transition and held SLA compliance under conditions
+that had no playbook. Alongside that, international logistics at Shorouk
+International Bookshop and hybrid IT operations at Nefertari American School.
+
+The second fourteen were about automation. I built AI-driven automation for
+contact centres at ByteDance, Vodafone and Uber: NLP pipelines that turn
+unstructured customer language into signal, Erlang C forecasting that turns
+volume into staffing, and the reporting layers that made both usable by people
+on the floor. The hard part was never the model. It was the handover — who owns
+the decision, what evidence supports it, and what happens when the system is
+wrong.
 
 In April 2026 I left that career and started building full time — alone, and
 teaching myself to write software as I went. The first four tools were published
@@ -125,6 +136,7 @@ it is unfinished, this document says so.
 - GitHub: [HatemIsmailShalaby1979](https://github.com/HatemIsmailShalaby1979)
 - LinkedIn: [hatem-shalaby-202902127](https://www.linkedin.com/in/hatem-shalaby-202902127/)
 - Email: hatemshalaby2025@gmail.com
+- Education: BSc Managerial Sciences (Computer Section), Sadat Academy for Management Sciences; Business Analytics Nanodegree, Udacity
 
 Based in Al Obour City, Al-Qalyubia Governorate, Egypt.
 
