@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Blue Waves — multi-format studio. Pre-revenue. Pipeline verified. Built solo.">
+<meta name="description" content="Blue Waves: a multi-format content studio with a fail-closed quality gate. Pre-revenue, pipeline verified, 85 tests passing. Component and first commercial vertical of Helix Codex. Snapshot 2026-09-05.">
 <title>Blue Waves</title>
 <style>
 :root{--bg:#07111f;--panel:#0d1b2e;--text:#edf4ff;--muted:#a8b8ce;--accent:#76a9ff;--line:#1d3552;--green:#4caf50}
@@ -12,17 +12,31 @@
 </head>
 <body><main>
 <nav><strong>Blue Waves</strong><a href="https://github.com/HatemIsmailShalaby1979/Blue-Waves-">Source on GitHub</a></nav>
-<header><span class="tag">Pre-revenue / Pipeline verified / Governance active</span><h1>A studio that proves media works before it claims revenue.</h1><p class="lead">Built by one engineer, alone, while switching careers. No whiteboard. No team. No external audit yet — just evidence, a fail-closed control plane, and an honest account.</p><p class="status"><strong>Status (v0.3.0):</strong> YouTube OAuth complete. End-to-end video publish verified (<code>NHXdNQzF5m0</code>). Podcast RSS valid. 85 tests passing. Quality gates real (ffprobe / FFT / LUFS / silence). SHEPO finance active. Revenue = $0. Production-scale revenue and SaaS-pivot GO/NO-GO remain open decisions.</p></header>
+<header><span class="tag">Pre-revenue / Pipeline verified / Governance active</span><h1>A studio that proves media works before it claims revenue.</h1><p class="lead">Built by one engineer, alone, while switching careers. No whiteboard. No team. No external audit yet. Just evidence, a fail-closed control plane, and an honest account.</p><p class="status"><strong>Status (v0.3.0), snapshot 2026-09-05:</strong> YouTube OAuth complete. End-to-end video publish verified (<code>NHXdNQzF5m0</code>). Podcast RSS valid. 85 tests passing. Quality gates real (ffprobe / FFT / LUFS / silence). SHEPO finance active. Revenue is $0. The container image has never been built. Production-scale revenue and the SaaS-pivot GO/NO-GO remain open decisions.</p></header>
 
-<section><h2>The promise</h2><p class="lead">Every output hits a quality gate before approval. Approval blocked if preview missing, empty, or below threshold. Default is hold.</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px"><div class="card"><h3>Create</h3><p>Local (Ken Burns 1080p) + cloud-ready (Kling/Seedance). FFmpeg-first mastering. Quota-aware rotation.</p></div><div class="card"><h3>Gate</h3><p>Video 1080p/30fps/h264 · Audio 48kHz stereo · -14 LUFS · -16 LUFS · silence/FFT checks.</p></div><div class="card"><h3>Publish / Hold</h3><p>Human-approved upload. Unapproved stays in library with audit trail. No autonomous release.</p></div></div></section>
+<section><h2>The pipeline</h2><p class="lead">Every output hits a quality gate before approval is considered. Approval is blocked if the preview is missing, empty, or below threshold. The default is hold.</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px"><div class="card"><h3>Create</h3><p>Local (Ken Burns 1080p) plus cloud-ready (Kling / Seedance). FFmpeg-first mastering. Quota-aware provider rotation.</p></div><div class="card"><h3>Gate</h3><p>Video 1080p / 30fps / h264. Audio 48kHz stereo, -14 LUFS for music and video, -16 LUFS for podcast. Silence and FFT checks.</p></div><div class="card"><h3>Publish or hold</h3><p>Human-approved upload. Unapproved media stays in the library with a hash-chained audit trail. No agent approves its own publish.</p></div></div></section>
 
-<section><h2>Proof — not adjectives</h2><table><tr><th>Evidence</th><th>Value (verified)</th></tr><tr><td>Tests</td><td>85 passing (offline, E2E media quality)</td></tr><tr><td>YouTube OAuth</td><td>Complete — new client ID configured</td></tr><tr><td>End-to-end publish</td><td>Verified (<code>NHXdNQzF5m0</code>)</td></tr><tr><td>Podcast RSS</td><td>Valid iTunes-compatible RSS 2.0</td></tr><tr><td>Quality gates</td><td>Real: <code>ffprobe</code> + FFT + LUFS + silence</td></tr><tr><td>SHEPO Finance</td><td>Real per-provider costs, CPM projection</td></tr><tr><td>Governance</td><td>Fail-closed; owner-controlled</td></tr></table></section>
+<section><h2>Proof, with snapshot dates</h2><table><tr><th>Evidence</th><th>Value</th><th>Snapshot</th></tr><tr><td>Tests</td><td>85 passing (offline, E2E media quality)</td><td>2026-09-05</td></tr><tr><td>YouTube OAuth</td><td>Complete, client configured</td><td>2026-09-05</td></tr><tr><td>End-to-end publish</td><td>Verified (<code>NHXdNQzF5m0</code>)</td><td>2026-09-05</td></tr><tr><td>Podcast RSS</td><td>Valid, iTunes-compatible RSS 2.0</td><td>2026-09-05</td></tr><tr><td>Quality gates</td><td><code>ffprobe</code> + FFT + LUFS + silence</td><td>2026-09-05</td></tr><tr><td>SHEPO finance</td><td>Real per-provider costs, CPM projection</td><td>2026-09-05</td></tr><tr><td>Governance</td><td>Fail-closed, owner-controlled</td><td>2026-09-05</td></tr></table></section>
 
-<section><h2>The honest gaps</h2><p class="lead">Not hidden. Named because this is evidence, not marketing.</p><ul><li>Revenue: <strong>$0</strong> — pre-revenue.</li><li>Production readiness: no certified isolation, no external audit, no legal privacy review, no on-call owner, no container build.</li><li>Repo: <strong>private</strong> since 2026-09-21.</li></ul></section>
+<section><h2>Honest gaps</h2><p class="lead">Named, not hidden. This is evidence, not marketing.</p><ul><li>Revenue: <strong>$0</strong>. Pre-revenue.</li><li>Production readiness: no certified isolation, no external audit, no legal privacy review, no on-call owner, no container build.</li><li>Repository: <strong>private</strong> since 2026-09-21.</li></ul><p>This is not a production deployment claim. There is no external audit, no certified data isolation, and no signed security review. No revenue has been realised.</p></section>
 
-<section><h2>The founder</h2><p class="lead">One engineer. Solo. Self-learning. Switched careers. Built operations solutions with software and AI as disciplined tools — not replacements for judgment. Helix Codex governs this studio because accountable AI must be owned.</p><p>Related: <a href="https://github.com/HatemIsmailShalaby1979/Helix-Prime">Helix Prime</a> (core engine) · <a href="https://github.com/HatemIsmailShalaby1979">Portfolio</a> (full story).</p></section>
+<section><h2>The founder's story</h2>
+<p>I spent twenty-eight years in contact-centre operations and workforce management. Forecasting, scheduling, adherence, service levels, churn. The same problems appeared in every company I worked in, and none of the tools solved them properly.</p>
+<p>In April 2026 I left that career and started building full time — alone, and teaching myself to write software as I went. The first four tools were published six weeks later, in May and June 2026. Each one took a single operational problem and solved it properly. They were not impressive. They were correct.</p>
+<p>Those four tools converged into one idea: <strong>Helix Codex</strong>, an accountable AI operating organization. Not an autonomous agent. An organization with a constitution, named roles with bounded authority, evidence trails, and a human at every consequential boundary. Helix Prime is its operations core.</p>
+<p>Blue Waves is a vertical built on Helix Codex, and the first commercial vertical. It is maintained by one person, with no team and no funding. It has not been externally audited and it has not made revenue. Where it is unfinished, this document says so.</p>
+</section>
 
-<section><h2>Next step</h2><p class="lead">Inspect the verified production report: <code>PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md</code>. Review evidence: <code>DECISIONS.md</code> (GO/NO-GO). Nothing hidden behind a marketing layer.</p><a class="cta" href="https://github.com/HatemIsmailShalaby1979/Blue-Waves-">Source and evidence on GitHub</a></section>
+<section><h2>Related work</h2><ul>
+<li><a href="https://github.com/HatemIsmailShalaby1979/Helix-Prime">Helix Prime</a>, the operations core</li>
+<li><a href="https://github.com/HatemIsmailShalaby1979/Helix-Education">Helix Education</a>, event-sourced learning engine</li>
+<li><a href="https://github.com/HatemIsmailShalaby1979/Study-Studio">Study Studio</a>, local-first AI tutor</li>
+<li><a href="https://github.com/HatemIsmailShalaby1979/L-D-Command-Center">L&amp;D Command Center</a>, desktop learning and career workstation</li>
+<li><a href="https://github.com/HatemIsmailShalaby1979/LIVE-Support-Assistant">LIVE Support Assistant</a>, explainable support prototype</li>
+<li><a href="https://github.com/HatemIsmailShalaby1979">Full portfolio</a>, the front door</li>
+</ul></section>
 
-<footer>Built by <strong>Hatem Ismail Shalaby</strong> — solo, self-learning, career-switch. All evidence local-first. No "unlock." No "revolutionize." Just proof.</footer>
+<footer>Built by <strong>Hatem Ismail Shalaby</strong> · Operations Architect · AI Systems Engineer · Founder<br><a href="https://github.com/HatemIsmailShalaby1979">Portfolio and Helix ecosystem</a></footer>
 </main></body></html>
+
+<!-- Snapshot 2026-09-05: pipeline verified, 85 tests, OAuth complete, publish NHXdNQzF5m0 -->
