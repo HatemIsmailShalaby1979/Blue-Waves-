@@ -41,7 +41,6 @@ Approval is blocked if the preview is missing, empty, or below gate. The owner s
 - Revenue is **$0**. The studio is pre-revenue. The projection in SHEPO is a model, not a receipt. See `PROFIT_AUDIT_2026-09-01.md`.
 - The container image has **never been built**. The sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface instead.
 - Nine production-only gates remain red by design: no certified data isolation, no external observer audit, and no legal privacy review, among others. See `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md`.
-- The repository is **public**, verified 2026-09-25 by unauthenticated request to the GitHub API and by `git ls-remote` without credentials. Earlier documents here recorded a 2026-09-21 visibility change to private; that no longer matches reality.
 - Production-scale revenue and the SaaS-pivot GO/NO-GO remain open decisions tracked in `DECISIONS.md`.
 
 ## Component status, snapshot 2026-09-05
@@ -82,37 +81,6 @@ Blue Waves consumes Helix Prime as an external client: never embedded, never sil
 
 Blue Waves does not make money and is not a production deployment. It has no certified data isolation, no external observer audit, and no signed legal privacy review. The container image has never been built. The pipeline is verified end-to-end, but production readiness also needs an assigned on-call owner and a signed security review, and those are missing.
 
-## The founder's story
-
-I spent twenty-eight years in operations. The first fourteen were the
-foundation: ground operations and real-time traffic management at Hurghada
-International Airport, then Air Berlin, where I directed ground operations
-through the 2011 regional transition and held SLA compliance under conditions
-that had no playbook. Alongside that, international logistics at Shorouk
-International Bookshop and hybrid IT operations at Nefertari American School.
-
-The second fourteen were about automation. I built AI-driven automation for
-contact centres at ByteDance, Vodafone and Uber: NLP pipelines that turn
-unstructured customer language into signal, Erlang C forecasting that turns
-volume into staffing, and the reporting layers that made both usable by people
-on the floor. The hard part was never the model. It was the handover — who owns
-the decision, what evidence supports it, and what happens when the system is
-wrong.
-
-In April 2026 I left that career and started building full time — alone, and
-teaching myself to write software as I went. The first four tools were published
-six weeks later, in May and June 2026. Each one took a single operational problem
-and solved it properly. They were not impressive. They were correct.
-
-Those four tools converged into one idea: **Helix Codex**, an accountable AI
-operating organization. Not an autonomous agent. An organization with a
-constitution, named roles with bounded authority, evidence trails, and a human at
-every consequential boundary. Helix Prime is its operations core.
-
-Blue Waves is a vertical built on Helix Codex, and the first commercial vertical. It is maintained by one person, with no team and
-no funding. It has not been externally audited and it has not made revenue. Where
-it is unfinished, this document says so.
-
 ## Related work
 
 - [Helix Prime](https://github.com/HatemIsmailShalaby1979/Helix-Prime) — the operations core
@@ -120,7 +88,7 @@ it is unfinished, this document says so.
 - [Study Studio](https://github.com/HatemIsmailShalaby1979/Study-Studio) — local-first AI tutor
 - [L&D Command Center](https://github.com/HatemIsmailShalaby1979/L-D-Command-Center) — desktop learning and career workstation
 - [LIVE Support Assistant](https://github.com/HatemIsmailShalaby1979/LIVE-Support-Assistant) — explainable support prototype
-- [Full portfolio](https://github.com/HatemIsmailShalaby1979) — the front door
+- [Full portfolio](https://github.com/HatemIsmailShalaby1979) — how this project fits the wider work
 
 ### The 2026 building attempts
 
