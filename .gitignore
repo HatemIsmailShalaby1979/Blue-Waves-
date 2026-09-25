@@ -19,3 +19,11 @@ secrets.json
 .mimosa/
 .v2c/
 .video_agent/
+
+# Runtime logs and cockpit scratch output
+*.log
+output/
+
+# Assistant tooling and project-local agent data — not source
+.claude/
+.workbuddy-ai/
