@@ -2,7 +2,9 @@
 
 **Status: pre-revenue, pipeline verified. Snapshot 2026-09-05.**
 
-Verified on 2026-09-05: 85 tests pass offline, YouTube OAuth is complete, an end-to-end video publish succeeded, the podcast RSS feed validates, and the quality gates run real measurements (`ffprobe`, FFT, LUFS, silence detection). Not verified: revenue, a built container image, any external audit.
+Verified on 2026-09-05: the test suite passes offline, YouTube OAuth is complete, an end-to-end video publish succeeded, the podcast RSS feed validates, and the quality gates run real measurements (`ffprobe`, FFT, LUFS, silence detection). Not verified: revenue, a built container image, any external audit.
+
+Test count re-measured 2026-09-27: **125 tests collected** — 109 in `tests/` plus 16 in the vendored `vendor/video_use/` suite. All 109 project tests pass. One cockpit E2E test (`test_real_cockpit_generation_rejection_retry_approval_and_preview`) has failed **intermittently** in full-tree runs and passes in isolation, which points at test ordering or shared state rather than the cockpit logic — that cause is inference, not a proven finding, and it is stated as such. Earlier revisions of this file said 85 tests, which understated it.
 
 Blue Waves is a component of **Helix Codex** and its first commercial vertical. It is a multi-format content studio: video, music, and podcasts produced through a hybrid local/cloud pipeline that stays under owner control.
 
@@ -27,7 +29,7 @@ Approval is blocked if the preview is missing, empty, or below gate. The owner s
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 85 passing, offline, including E2E media quality | 2026-09-05 |
+| Tests | 125 collected (109 project + 16 vendored); all 109 project tests pass, one cockpit E2E test intermittently order-dependent | 2026-09-27 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
@@ -60,9 +62,9 @@ Approval is blocked if the preview is missing, empty, or below gate. The owner s
 | Secrets encryption | Active | AES-256-GCM with a master password at rest |
 | Provider approvals | Active | Cloud providers fail closed until the owner approves |
 | Monetisation | Active | Sponsor pipeline and media-kit generator |
-| Cockpit board | Active | 10 panels, auto-refresh every 10s |
+| Cockpit board | Active | 11 navigation panels (`cockpit_ui.py`), auto-refresh every 30 s (`cockpit/static/js/app.js`) |
 | Quality gates | Real | `ffprobe` + FFT + LUFS + silence; hard thresholds |
-| Tests | Passing | 85 collected, offline, including E2E media quality, gates, SHEPO, cockpit, and scheduler |
+| Tests | Passing | 125 collected (109 project + 16 vendored), including E2E media quality, gates, SHEPO, cockpit, and scheduler; one cockpit E2E test is intermittently order-dependent |
 
 Every state above is dated 2026-09-05. States describe technical function only.
 
@@ -75,11 +77,27 @@ Blue Waves consumes Helix Prime as an external client: never embedded, never sil
 - `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md`: the exact gate verdicts, the revenue projection, and the gap between "works technically" and "proven commercially".
 - `DECISIONS.md`: the GO/NO-GO decision for the SaaS pivot.
 - `PROFIT_AUDIT_2026-09-01.md`: $0 revenue and the real cost structure.
-- `cockpit/`: 10 panels showing quality metrics, approval status, and the audit chain.
+- `cockpit/`: 11 panels showing quality metrics, approval status, and the audit chain.
 
 ## Honest boundary
 
 Blue Waves does not make money and is not a production deployment. It has no certified data isolation, no external observer audit, and no signed legal privacy review. The container image has never been built. The pipeline is verified end-to-end, but production readiness also needs an assigned on-call owner and a signed security review, and those are missing.
+
+### A note on the local working tree (2026-09-27)
+
+Two test files that were present locally but **not tracked** in this repository —
+`tests/test_optimization.py` and `tests/test_profitability_evidence.py` —
+**broke test collection entirely**: running `pytest` with them in place ended with
+`Interrupted: 2 errors during collection`, so no test ran at all. They imported
+`blue_waves.optimization` and `blue_waves.editorial_quality`, and neither module
+exists; `FinanceEngine` also lacked the `record_revenue`, `record_owner_time`, and
+`get_profitability_report` methods they called. **Both files have been deleted**;
+collection now succeeds, which is the 125-test figure above. Copies are retained
+outside the repository.
+
+Two untracked planning documents remain in the working tree
+(`docs/FREE_PROVIDER_KEYS.md`, `docs/WINNER_OPTIMIZATION_PLAN.md`). Their claims
+are not counted anywhere in this file because they are not part of the repository.
 
 ## Related work
 
