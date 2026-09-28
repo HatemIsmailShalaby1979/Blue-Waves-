@@ -1,16 +1,30 @@
+<div align="center">
+
 # Blue Waves
 
-**Status: pre-revenue, pipeline verified. Snapshot 2026-09-05.**
+**A multi-format content studio and the first commercial vertical on Helix Codex.**
 
-Verified on 2026-09-05: the test suite passes offline, YouTube OAuth is complete, an end-to-end video publish succeeded, the podcast RSS feed validates, and the quality gates run real measurements (`ffprobe`, FFT, LUFS, silence detection). Not verified: revenue, a built container image, any external audit.
+![Status](https://img.shields.io/badge/status-pre--revenue-yellow)
+![Tests](https://img.shields.io/badge/tests-125%20collected-2ea043)
+![Licence](https://img.shields.io/badge/licence-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-3776ab)
 
-Test count re-measured 2026-09-27: **125 tests collected** — 109 in `tests/` plus 16 in the vendored `vendor/video_use/` suite. All 109 project tests pass. One cockpit E2E test (`test_real_cockpit_generation_rejection_retry_approval_and_preview`) has failed **intermittently** in full-tree runs and passes in isolation, which points at test ordering or shared state rather than the cockpit logic — that cause is inference, not a proven finding, and it is stated as such. Earlier revisions of this file said 85 tests, which understated it.
+</div>
 
-Blue Waves is a component of **Helix Codex** and its first commercial vertical. It is a multi-format content studio: video, music, and podcasts produced through a hybrid local/cloud pipeline that stays under owner control.
+## One-line identity
+
+Blue Waves is a multi-format content studio — video, music, and podcasts — and the
+first commercial vertical built on the Helix Codex framework. It produces through a
+hybrid local/cloud pipeline that stays under the owner's control.
+
+> [!NOTE]
+> **Operating principle.** No agent approves its own publish. Every output passes real quality measurements (`ffprobe`, LUFS, FFT, silence detection) before the owner is even asked, and the default is hold. The owner sees exactly what will go out; an unapproved asset stays in the library with a hash-chained audit trail. External actions need the owner's consent — cloud providers fail closed until approved.
 
 ## What it does
 
-**Create.** Local generation first (Ken Burns 1080p video, Suno music, ElevenLabs TTS podcast), with cloud-ready paths (Kling and Seedance video, an ACE-Step local fallback) and an FFmpeg-first mastering layer. Provider rotation is quota-aware.
+**Create.** Local generation first (Ken Burns 1080p video, Suno music, ElevenLabs TTS
+podcast), with cloud-ready paths (Kling and Seedance video, an ACE-Step local fallback)
+and an FFmpeg-first mastering layer. Provider rotation is quota-aware.
 
 **Gate.** Every output passes real quality proxies before approval is considered:
 
@@ -21,83 +35,59 @@ Blue Waves is a component of **Helix Codex** and its first commercial vertical. 
 | Podcast audio | 48kHz stereo, -16 LUFS |
 | All audio | Silence detection and FFT checks |
 
-Approval is blocked if the preview is missing, empty, or below gate. The owner sees exactly what will go out.
+Approval is blocked if the preview is missing, empty, or below gate.
 
-**Publish or hold.** Approved media moves through the Cockpit. YouTube OAuth is complete with the client configured and scopes `youtube.upload` and `yt-analytics.readonly`. Unapproved media stays in the library with a hash-chained audit trail in `audit_events`. The default is hold. No agent approves its own publish.
+**Publish or hold.** Approved media moves through the Cockpit. YouTube OAuth is complete
+with scopes `youtube.upload` and `yt-analytics.readonly`. Unapproved media stays in the
+library with a hash-chained audit trail in `audit_events`. The default is hold. No agent
+approves its own publish.
 
-## Proof, with snapshot dates
+## How it fits Helix Codex
+
+Blue Waves is a **vertical** — the first commercial line built on the Helix Codex
+framework. Unlike the component repositories, it **consumes Helix Prime as a live
+external client** over the framework's contracts: never embedded, never silent. Helix
+Prime remains the same six-engine platform with nine agents, governed memory, and audit
+chains, and it remains pre-pilot. The code relationship is a dependency on the
+framework's governance contract, with an independent runtime — not shared source.
+
+## Architecture
+
+- `cockpit_ui.py` — 11 navigation panels showing quality metrics, approval status, audit chain.
+- Scheduler — `tick()` / `run_automated_cycle()`: queue, generate, quality gate, `awaiting_owner`, retries up to 3, ledger-logged.
+- Quality gates — `ffprobe` + FFT + LUFS + silence, hard thresholds.
+- Provider rotation — local plus cloud-ready; cloud providers fail closed until approved.
+- `audit_events` — hash-chained audit trail; every external action consent-gated.
+- SHEPO finance — real per-provider costs, CPM projection, break-even, provider ROI.
+
+## Production status & test coverage
+
+Stated plainly and dated. This section is last by design.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 125 collected (109 project + 16 vendored); all 109 project tests pass, one cockpit E2E test intermittently order-dependent | 2026-09-27 |
+| Tests | 125 collected (109 project + 16 vendored); all 109 project tests pass; one cockpit E2E test intermittently order-dependent | 2026-09-27 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
 | Quality gates | `ffprobe` + FFT + LUFS + silence, hard thresholds | 2026-09-05 |
 | SHEPO finance | Real per-provider costs, CPM projection, break-even, provider ROI | 2026-09-05 |
-| Governance | Owner-controlled and fail-closed; every external action needs consent | 2026-09-05 |
 | Version | v0.3.0 | 2026-09-05 |
 
-## What the proof does not say
+> [!WARNING]
+> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review). No external audit, no signed security review, no assigned on-call owner. Earlier revisions of this file said 85 tests, which understated it; the 125 figure is the current collection.
 
-- Revenue is **$0**. The studio is pre-revenue. The projection in SHEPO is a model, not a receipt. See `PROFIT_AUDIT_2026-09-01.md`.
-- The container image has **never been built**. The sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface instead.
-- Nine production-only gates remain red by design: no certified data isolation, no external observer audit, and no legal privacy review, among others. See `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md`.
-- Production-scale revenue and the SaaS-pivot GO/NO-GO remain open decisions tracked in `DECISIONS.md`.
+## Run it
 
-## Component status, snapshot 2026-09-05
+```bash
+pip install -r requirements.txt
+python cockpit_ui.py
+```
 
-| Component | State | Notes |
-|---|---|---|
-| Video generation | Working | Local plus cloud-ready; post-production overlays, captions, grading, YouTube-spec CRF 18 |
-| Music generation | Working | Suno API, aimlapi, ACE-Step, local fallback; -14 LUFS mastering |
-| Podcast generation | Working | ElevenLabs TTS (Adam/Bella), Kokoro, Edge-TTS; sidechain-ducked beds; -16 LUFS |
-| YouTube OAuth | Complete | Client configured; scopes `youtube.upload`, `yt-analytics.readonly` |
-| YouTube upload | Verified | End-to-end pipeline tested |
-| Podcast RSS | Working | iTunes-compatible |
-| YouTube analytics | Ready | `fetch_youtube_analytics` and `sync_published_metrics` |
-| Scheduler | Automated | `tick()` and `run_automated_cycle()`: queue, generate, quality gate, `awaiting_owner`, retries up to 3, ledger-logged |
-| KOYOSHU / SHIPO | Active | Metrics, proposals, approval, learning |
-| SHEPO finance | Active | Real costs, CPM projection, break-even, provider ROI (`/api/shepo/*`) |
-| Secrets encryption | Active | AES-256-GCM with a master password at rest |
-| Provider approvals | Active | Cloud providers fail closed until the owner approves |
-| Monetisation | Active | Sponsor pipeline and media-kit generator |
-| Cockpit board | Active | 11 navigation panels (`cockpit_ui.py`), auto-refresh every 30 s (`cockpit/static/js/app.js`) |
-| Quality gates | Real | `ffprobe` + FFT + LUFS + silence; hard thresholds |
-| Tests | Passing | 125 collected (109 project + 16 vendored), including E2E media quality, gates, SHEPO, cockpit, and scheduler; one cockpit E2E test is intermittently order-dependent |
-
-Every state above is dated 2026-09-05. States describe technical function only.
-
-## How this connects to the larger work
-
-Blue Waves consumes Helix Prime as an external client: never embedded, never silent. Helix Prime is the same six-engine platform with nine agents, governed memory, and audit chains, and it remains pre-pilot. It reports 1,758 tests passed and 0 failed with 9 production-only gates red by design (snapshot 2026-09-24). See `MASTER_STORY.md` in Helix-Prime for the verified account.
-
-## Where to look next
-
-- `PRODUCTION_FINANCIAL_EXECUTION_REPORT_2026-09-03.md`: the exact gate verdicts, the revenue projection, and the gap between "works technically" and "proven commercially".
-- `DECISIONS.md`: the GO/NO-GO decision for the SaaS pivot.
-- `PROFIT_AUDIT_2026-09-01.md`: $0 revenue and the real cost structure.
-- `cockpit/`: 11 panels showing quality metrics, approval status, and the audit chain.
-
-## Honest boundary
-
-Blue Waves does not make money and is not a production deployment. It has no certified data isolation, no external observer audit, and no signed legal privacy review. The container image has never been built. The pipeline is verified end-to-end, but production readiness also needs an assigned on-call owner and a signed security review, and those are missing.
-
-### A note on the local working tree (2026-09-27)
-
-Two test files that were present locally but **not tracked** in this repository —
-`tests/test_optimization.py` and `tests/test_profitability_evidence.py` —
-**broke test collection entirely**: running `pytest` with them in place ended with
-`Interrupted: 2 errors during collection`, so no test ran at all. They imported
-`blue_waves.optimization` and `blue_waves.editorial_quality`, and neither module
-exists; `FinanceEngine` also lacked the `record_revenue`, `record_owner_time`, and
-`get_profitability_report` methods they called. **Both files have been deleted**;
-collection now succeeds, which is the 125-test figure above. Copies are retained
-outside the repository.
-
-Two untracked planning documents remain in the working tree
-(`docs/FREE_PROVIDER_KEYS.md`, `docs/WINNER_OPTIMIZATION_PLAN.md`). Their claims
-are not counted anywhere in this file because they are not part of the repository.
+Provider APIs (Suno, ElevenLabs, Kling, Seedance) and YouTube OAuth credentials are
+required for generation and publish; local mastering needs ffmpeg. Untracked planning
+documents (`docs/FREE_PROVIDER_KEYS.md`, `docs/WINNER_OPTIMIZATION_PLAN.md`) are not
+part of the repository and their claims are not counted here.
 
 ## Related work
 
