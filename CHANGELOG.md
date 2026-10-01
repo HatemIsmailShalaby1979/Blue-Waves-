@@ -30,6 +30,22 @@
   understated the suite; the figure was raised to 125 and now stands at 163 collected
   (147 project + 16 vendored).
 
+### Added — 2026-09-30 (YouTube external-video publish)
+- **External-video ingest → unlisted → owner review → public** — `ingest_external_video`
+  (SHA-256 + ffprobe validation, managed copy into `data/`), `UPLOADED_UNLISTED` asset
+  state, `upload_unlisted` (`videos.insert`, 1600 units), `go_public` (`videos.update`
+  privacy flip, fail-closed verification), `update_seo_metadata`; Cockpit routes + UI for
+  ingest / review / upload-unlisted / go-public / OAuth callback / preflight. 38 new tests
+  (`test_external_ingest`, `test_cockpit_ingest`, `test_unlisted_publish`). OAuth now
+  requests `youtube.force-ssl` alongside `youtube.upload` and `yt-analytics.readonly`
+  (the force-ssl scope is what the privacy flip requires).
+
+### Fixed — 2026-09-30
+- **Cockpit dashboard blank-page regression** — inline `<script>` in `cockpit_ui.py` had
+  literal backslash-n inside JS single-quoted strings turned into real newlines (a non-raw
+  triple-quoted constant), causing `SyntaxError` and a blank page. Escaped as `\\n`; added
+  `tests/test_cockpit_ui_js.py`, which extracts the served script and runs `node --check`.
+
 ## 0.3.0 — 2026-09-04 (Quality Sprint)
 
 Maximize generated-media quality to compete with real YouTube creators: video-use

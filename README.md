@@ -39,7 +39,8 @@ and an FFmpeg-first mastering layer. Provider rotation is quota-aware.
 Approval is blocked if the preview is missing, empty, or below gate.
 
 **Publish or hold.** Approved media moves through the Cockpit. YouTube OAuth is complete
-with scopes `youtube.upload` and `yt-analytics.readonly`. Unapproved media stays in the
+with scopes `youtube.upload`, `yt-analytics.readonly`, and `youtube.force-ssl` (the
+force-ssl scope is what the privacy flip to public requires). Unapproved media stays in the
 library with a hash-chained audit trail in `audit_events`. The default is hold. No agent
 approves its own publish.
 
@@ -77,7 +78,7 @@ original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 125 collected in the tracked repository (109 project + 16 vendored), all pass; the current working tree collects 163 (147 project + 16 vendored), all pass — the extra 38 project tests are in untracked files from an uncommitted feature. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
+| Tests | 163 collected (147 project + 16 vendored), all pass — the YouTube external-video publish feature added 38 project tests. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
 | CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
