@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 from .governance import Governance
 from .models import AssetStatus, Claim, ContentAsset, Language, SourceRef
-from .providers import Completion, ProviderUnavailable, TextProvider
+from .providers import ProviderUnavailable, TextProvider
 
 
 PILLAR = "the_operators_craft"

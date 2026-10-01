@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import tempfile
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -311,7 +309,7 @@ class ContentQualityScorer:
             # Find the JSON block
             json_start = stderr.find("{")
             json_end = stderr.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
+            if 0 <= json_start < json_end:
                 data = json.loads(stderr[json_start:json_end])
                 lufs_str = data.get("input_i", "0")
                 return float(lufs_str)

@@ -7,7 +7,7 @@ from pathlib import Path
 from blue_waves.application import BlueWavesApplication
 from blue_waves.config import Settings
 from blue_waves.content_quality_scorer import ContentQualityScorer
-from blue_waves.models import AssetStatus, MusicAsset, PodcastAsset
+from blue_waves.models import AssetStatus, PodcastAsset
 
 
 def _app(tmp_path) -> BlueWavesApplication:

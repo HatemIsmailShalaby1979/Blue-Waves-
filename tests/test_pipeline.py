@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from blue_waves.application import BlueWavesApplication
 from blue_waves.config import Settings

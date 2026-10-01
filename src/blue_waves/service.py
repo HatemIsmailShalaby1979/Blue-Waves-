@@ -1,10 +1,8 @@
 from __future__ import annotations
 import json
-import base64
-import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 from .agents import roster
@@ -104,12 +102,12 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json(500, {"error": f"OAuth callback failed: {e}"})
         elif path == "/":
-                secret = self.headers.get("X-Cockpit-Secret-Key")
-                if not secret or secret != "secret123":
-                    self._json(401, {"error": "unauthorized"})
-                    return
-                self._serve_dashboard()
+            secret = self.headers.get("X-Cockpit-Secret-Key")
+            if not secret or secret != "secret123":
+                self._json(401, {"error": "unauthorized"})
                 return
+            self._serve_dashboard()
+            return
         else:
             self._json(404, {"error": "not_found"})
 
@@ -293,7 +291,8 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 return
             if path.startswith("/v1/metrics/"):
                 parts = path.split("/")
-                if len(parts) != 4: raise ValueError("metric path must include an asset id")
+                if len(parts) != 4:
+                    raise ValueError("metric path must include an asset id")
                 self._json(201, self.application.record_media_metric(parts[3], str(body["channel"]), str(body["metric"]), float(body["value"]), str(body.get("source", "owner_import"))))
                 return
             self._json(404, {"error": "not_found"})
@@ -640,7 +639,7 @@ setInterval(loadAll, 30000);
 </body>
 </html>"""
 
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # pylint: disable=redefined-builtin  # signature fixed by http.server
         return
 
 

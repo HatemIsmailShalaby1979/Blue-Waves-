@@ -12,7 +12,7 @@ from typing import Any, Callable
 from .config import Settings
 from .dialogue import build_narration
 from .governance import Governance
-from .models import AssetStatus, ContentAsset, Language, now_iso
+from .models import AssetStatus, ContentAsset, Language
 from .providers import ProviderHealthMonitor, ProviderRegistry, ProviderUnavailable
 from .video_use_editor import VideoUseEditor
 
@@ -126,114 +126,114 @@ class VideoEngine:
                        "use stock footage, or submit a shorter test render"),
             )
         for provider in providers:
-          reservation = None
-          try:
-            if self._providers:
-                reservation = self._providers.rotation.reserve(
-                    provider.name,
-                    monthly_budget_cents=self._settings.monthly_cloud_cents,
-                )
-                if reservation is None:
-                    errors.append(f"{provider.name}: quota or budget unavailable")
-                    continue
-            video_path = str(Path(self._settings.data_dir) / "videos" / f"{asset_id}.mp4")
-            Path(video_path).parent.mkdir(parents=True, exist_ok=True)
-            if is_long:
-                self._render_scenes(
-                    provider, prompt, sections, scene_duration, num_scenes,
-                    resolution, music_mode, video_path, progress_cb,
-                )
-            else:
-                # Ken Burns provider supports narration and music_mode
-                if provider.name == "ken_burns":
-                    video_bytes = provider.generate(
-                        prompt=prompt, duration=duration, resolution=resolution,
-                        narration=narration, music_mode=music_mode
+            reservation = None
+            try:
+                if self._providers:
+                    reservation = self._providers.rotation.reserve(
+                        provider.name,
+                        monthly_budget_cents=self._settings.monthly_cloud_cents,
+                    )
+                    if reservation is None:
+                        errors.append(f"{provider.name}: quota or budget unavailable")
+                        continue
+                video_path = str(Path(self._settings.data_dir) / "videos" / f"{asset_id}.mp4")
+                Path(video_path).parent.mkdir(parents=True, exist_ok=True)
+                if is_long:
+                    self._render_scenes(
+                        provider, prompt, sections, scene_duration, num_scenes,
+                        resolution, music_mode, video_path, progress_cb,
                     )
                 else:
-                    video_bytes = provider.generate(prompt=prompt, duration=duration, resolution=resolution)
-                Path(video_path).write_bytes(video_bytes)
-            if progress_cb:
-                progress_cb("scenes rendered", 55.0)
+                    # Ken Burns provider supports narration and music_mode
+                    if provider.name == "ken_burns":
+                        video_bytes = provider.generate(
+                            prompt=prompt, duration=duration, resolution=resolution,
+                            narration=narration, music_mode=music_mode
+                        )
+                    else:
+                        video_bytes = provider.generate(prompt=prompt, duration=duration, resolution=resolution)
+                    Path(video_path).write_bytes(video_bytes)
+                if progress_cb:
+                    progress_cb("scenes rendered", 55.0)
 
-            # Cloud/stock clips carry no narration — mix a TTS bed over them so
-            # every video is narrated regardless of which provider rendered it.
-            if not getattr(provider, "provides_narration", provider.name == "ken_burns"):
-                try:
-                    if progress_cb:
-                        progress_cb("narration bed", 57.0)
-                    self._mix_narration_bed(video_path, narration or prompt, duration)
-                    asset.metadata["narration_bed"] = True
-                except Exception as exc:
-                    asset.metadata["narration_bed_error"] = str(exc)[:200]
+                # Cloud/stock clips carry no narration — mix a TTS bed over them so
+                # every video is narrated regardless of which provider rendered it.
+                if not getattr(provider, "provides_narration", provider.name == "ken_burns"):
+                    try:
+                        if progress_cb:
+                            progress_cb("narration bed", 57.0)
+                        self._mix_narration_bed(video_path, narration or prompt, duration)
+                        asset.metadata["narration_bed"] = True
+                    except Exception as exc:
+                        asset.metadata["narration_bed_error"] = str(exc)[:200]
 
-            # Post-production via video-use: overlays, transitions, color grading,
-            # captioning, chapter cards, YouTube-spec encoding. This bridges the
-            # quality gap between "raw render" and "real YouTube video".
-            if self._video_use_editor:
-                try:
-                    if progress_cb:
-                        progress_cb("post-production (video-use)", 60.0)
-                    from .enhancement import RESOLUTIONS as _RES
-                    out_w, out_h = _RES.get(
-                        resolution or "",
-                        ((1920, 1080) if quality in ("high", "premium") else (1280, 720)),
-                    )
-                    edit_result = self._video_use_editor.edit(
-                        raw_video_path=Path(video_path),
-                        transcript_text=narration or prompt,
-                        narration_audio_path=None,
-                        topic=topic,
-                        duration=duration,
-                        width=out_w,
-                        height=out_h,
-                        chapters=chapters,
-                    )
-                    if edit_result.success and edit_result.output_path:
-                        # Replace raw video with post-produced version.
-                        # shutil.move survives cross-drive temp dirs where rename fails;
-                        # the raw file is only removed after the move succeeds.
-                        import shutil
-                        tmp_out = Path(edit_result.output_path)
-                        raw = Path(video_path)
-                        backup = raw.with_name(raw.stem + ".raw" + raw.suffix)
-                        raw.replace(backup)
-                        try:
-                            shutil.move(str(tmp_out), str(raw))
-                        except Exception:
-                            backup.replace(raw)
-                            raise
-                        backup.unlink(missing_ok=True)
-                        asset.metadata["video_use"] = {
-                            "transcript": edit_result.transcript[:500],
-                            "edl_entries": len(edit_result.edl),
-                            "self_eval_score": edit_result.self_eval_score,
-                            "issues": edit_result.issues[:5],
-                            "chapters": len(chapters),
-                        }
-                except Exception as exc:
-                    # Post-production failure is not fatal — raw video is still usable
-                    asset.metadata["video_use_error"] = str(exc)[:200]
-            if progress_cb:
-                progress_cb("post-production done", 90.0)
+                # Post-production via video-use: overlays, transitions, color grading,
+                # captioning, chapter cards, YouTube-spec encoding. This bridges the
+                # quality gap between "raw render" and "real YouTube video".
+                if self._video_use_editor:
+                    try:
+                        if progress_cb:
+                            progress_cb("post-production (video-use)", 60.0)
+                        from .enhancement import RESOLUTIONS as _RES
+                        out_w, out_h = _RES.get(
+                            resolution or "",
+                            ((1920, 1080) if quality in ("high", "premium") else (1280, 720)),
+                        )
+                        edit_result = self._video_use_editor.edit(
+                            raw_video_path=Path(video_path),
+                            transcript_text=narration or prompt,
+                            narration_audio_path=None,
+                            topic=topic,
+                            duration=duration,
+                            width=out_w,
+                            height=out_h,
+                            chapters=chapters,
+                        )
+                        if edit_result.success and edit_result.output_path:
+                            # Replace raw video with post-produced version.
+                            # shutil.move survives cross-drive temp dirs where rename fails;
+                            # the raw file is only removed after the move succeeds.
+                            import shutil
+                            tmp_out = Path(edit_result.output_path)
+                            raw = Path(video_path)
+                            backup = raw.with_name(raw.stem + ".raw" + raw.suffix)
+                            raw.replace(backup)
+                            try:
+                                shutil.move(str(tmp_out), str(raw))
+                            except Exception:
+                                backup.replace(raw)
+                                raise
+                            backup.unlink(missing_ok=True)
+                            asset.metadata["video_use"] = {
+                                "transcript": edit_result.transcript[:500],
+                                "edl_entries": len(edit_result.edl),
+                                "self_eval_score": edit_result.self_eval_score,
+                                "issues": edit_result.issues[:5],
+                                "chapters": len(chapters),
+                            }
+                    except Exception as exc:
+                        # Post-production failure is not fatal — raw video is still usable
+                        asset.metadata["video_use_error"] = str(exc)[:200]
+                if progress_cb:
+                    progress_cb("post-production done", 90.0)
 
-            asset.media_manifest = {"video_path": video_path, "provider": provider.name, "provider_attempts": [p.name for p in providers], "duration": duration, "resolution": resolution,
-                                    "scenes": num_scenes, "chapters": [c[1] for c in chapters]}
-            asset.transition(AssetStatus.AWAITING_OWNER)
-            self._health.record_success(provider.name)
-            if progress_cb:
-                progress_cb("done", 95.0)
-            return VideoGenerationResult(
-                success=True,
-                asset=asset,
-                video_path=video_path,
-                provider_used=provider.name,
-            )
-          except Exception as exc:
-            if reservation is not None and self._providers:
-                self._providers.rotation.release(reservation)
-            self._health.record_failure(provider.name, str(exc))
-            errors.append(f"{provider.name}: {exc}")
+                asset.media_manifest = {"video_path": video_path, "provider": provider.name, "provider_attempts": [p.name for p in providers], "duration": duration, "resolution": resolution,
+                                        "scenes": num_scenes, "chapters": [c[1] for c in chapters]}
+                asset.transition(AssetStatus.AWAITING_OWNER)
+                self._health.record_success(provider.name)
+                if progress_cb:
+                    progress_cb("done", 95.0)
+                return VideoGenerationResult(
+                    success=True,
+                    asset=asset,
+                    video_path=video_path,
+                    provider_used=provider.name,
+                )
+            except Exception as exc:
+                if reservation is not None and self._providers:
+                    self._providers.rotation.release(reservation)
+                self._health.record_failure(provider.name, str(exc))
+                errors.append(f"{provider.name}: {exc}")
         asset.transition(AssetStatus.REJECTED)
         return VideoGenerationResult(success=False, asset=asset, error="; ".join(errors))
 
@@ -292,7 +292,7 @@ class VideoEngine:
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
                 "-t", str(duration), str(mixed),
             ]
-            probe = subprocess.run(ambience_mix, capture_output=True,
+            probe = subprocess.run(ambience_mix, capture_output=True, check=False,
                                    timeout=max(120, duration * 2 + 30))
             if probe.returncode != 0 or not mixed.is_file() or mixed.stat().st_size == 0:
                 # Clip has no usable audio track — carry narration alone.
@@ -402,7 +402,7 @@ class VideoEngine:
                 "ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
                 "-i", str(list_file), "-c", "copy", str(output),
             ]
-            probe = subprocess.run(copy_cmd, capture_output=True, timeout=300)
+            probe = subprocess.run(copy_cmd, capture_output=True, timeout=300, check=False)
             if probe.returncode != 0 or not output.is_file() or output.stat().st_size == 0:
                 re_cmd = [
                     "ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",

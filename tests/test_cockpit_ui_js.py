@@ -45,6 +45,7 @@ def test_dashboard_inline_script_is_valid_js() -> None:
             [_NODE, "--check", str(path)],
             capture_output=True,
             text=True,
+            check=False,
         )
     finally:
         path.unlink(missing_ok=True)

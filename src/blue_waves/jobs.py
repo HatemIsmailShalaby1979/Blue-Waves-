@@ -100,7 +100,7 @@ class JobManager:
                 return False
             job.status = "running"
             job.updated_at = now_iso()
-        if not self._semaphore.acquire(blocking=False):
+        if not self._semaphore.acquire(blocking=False):  # pylint: disable=consider-using-with  # semaphore released manually after the job completes
             self.update(job_id, status="queued", stage="waiting for worker")
             # Re-queue: run blocking in the thread instead.
             thread = threading.Thread(target=self._run_blocking, args=(job_id, target), daemon=True)

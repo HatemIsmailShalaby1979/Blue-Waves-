@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class Settings:
+    # pylint: disable=too-many-instance-attributes  # dataclass holding every configurable knob by design
     tenant_id: str = "bluewaves"
     owner_actor: str = "hatem"
     data_dir: Path = Path("data")
@@ -90,7 +91,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         # Load .env file from project root (3 levels up from config.py: blue_waves -> src -> project_root)
         load_dotenv(Path(__file__).parent.parent.parent / ".env")
-        
+
         def integer(name: str, default: int) -> int:
             raw = os.getenv(name)
             if raw is None or raw == "":

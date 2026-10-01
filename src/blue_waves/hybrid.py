@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from .compat import StrEnum
 from .governance import Governance, GovernanceViolation
-from .providers import OpenAICompatibleProvider, ProviderUnavailable
+from .providers import OpenAICompatibleProvider
 
 
 class Stage(StrEnum):

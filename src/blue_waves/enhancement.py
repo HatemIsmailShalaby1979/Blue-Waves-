@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import subprocess
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -155,7 +153,6 @@ class MediaEnhancer:
     def _probe_video(path: Path) -> tuple[int, int, int]:
         """Return (width, height, fps) of the first video stream, or zeros."""
         import json
-        import subprocess
 
         try:
             out = subprocess.run(

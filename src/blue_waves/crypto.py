@@ -12,9 +12,7 @@ environment variable, with an optional in-process override for CLI/testing.
 from __future__ import annotations
 
 import base64
-import hashlib
 import os
-from dataclasses import dataclass
 from typing import Any
 
 try:

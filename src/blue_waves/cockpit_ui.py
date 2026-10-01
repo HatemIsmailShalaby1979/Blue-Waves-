@@ -701,7 +701,7 @@ LOADERS.meta = async function(){
   const shipo = intel.shipo||{};
   document.getElementById('sections').innerHTML = `
     <div class="card wide-card">
-      <h2>SHIPO Recommendation (requires owner approval)</h2>
+      <h2>SHEPO Recommendation (requires owner approval)</h2>
       <p>${esc(shipo.strategy||'-')}</p>
       <div class="grid" style="margin-top:12px">
         <div class="card"><h2>Viral Topic Suggestions</h2>

@@ -15,7 +15,6 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .models import CostEvent, now_iso
 from .provider_rotation import ProviderCapability, ProviderRotationMatrix
 from .toolchain import (
     AUDIO_SAMPLE_RATE,
@@ -321,15 +320,15 @@ def _validate_url(url: str, allowed_hosts: set[str] | None = None) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ProviderUnavailable(f"Invalid URL scheme: {parsed.scheme}")
-    
+
     hostname = parsed.hostname
     if not hostname:
         raise ProviderUnavailable("URL missing hostname")
-    
+
     # Allow localhost for local development
     if hostname in ("localhost", "127.0.0.1", "::1"):
         return
-    
+
     # Check against allowed hosts
     hosts = allowed_hosts or ALLOWED_OPENAI_HOSTS
     if hostname not in hosts:
@@ -349,8 +348,6 @@ class AimlapiMusicProvider:
         if not self.api_key:
             raise ProviderUnavailable("aimlapi API key not configured")
 
-        import urllib.request
-        import json
         import time as _time
 
         _validate_url(self.base_url, ALLOWED_MEDIA_HOSTS)
@@ -545,10 +542,10 @@ class EdgeTTSProvider:
             raise ProviderUnavailable("Invalid voice_id")
         if len(text) > 10000:
             raise ProviderUnavailable("Text too long")
-        
+
         fd, output_path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
-        
+
         try:
             asyncio.run(Communicate(text, voice_id).save(output_path))
             return Path(output_path).read_bytes()
@@ -581,7 +578,6 @@ class GoogleTTSProvider:
             raise ProviderUnavailable(
                 "google-cloud-texttospeech not installed; run pip install google-cloud-texttospeech"
             ) from exc
-        import os
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.credentials_path
         client = texttospeech.TextToSpeechClient()
         synthesis_input = texttospeech.SynthesisInput(text=text[:5000])
@@ -603,8 +599,6 @@ class GoogleTTSProvider:
 def _aimlapi_video_generate(api_key: str, base_url: str, model: str, prompt: str,
                             duration: int = 5, aspect_ratio: str = "16:9") -> bytes:
     """Shared aimlapi v2 video generation with async polling."""
-    import urllib.request
-    import json
     import time as _time
 
     root = _api_root(base_url)
@@ -679,7 +673,6 @@ def _kling_native_request(api_key: str, base_url: str, path: str,
                             payload: dict[str, Any] | None,
                             timeout: int = 60) -> dict[str, Any]:
     """POST/GET against the native Kling API with error bodies surfaced."""
-    import urllib.error
     url = f"{base_url.rstrip('/')}{path}"
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     headers = {"Authorization": f"Bearer {api_key}"}
@@ -858,7 +851,6 @@ class StockVideoProvider:
 
     def generate(self, prompt: str, duration: int = 5, resolution: str = "720p",
                  **kwargs: Any) -> bytes:
-        from .enhancement import RESOLUTIONS
         width, height = RESOLUTIONS.get(resolution, RESOLUTIONS["720p"])
         words = [w for w in prompt.lower().split() if len(w) > 3][:3]
         query = " ".join(words) if words else "nature"
@@ -866,7 +858,6 @@ class StockVideoProvider:
         return self._normalize(raw, width, height, duration)
 
     def _fetch_clip(self, query: str) -> bytes:
-        import urllib.parse
         errors: list[str] = []
         if self.pexels_key:
             try:
@@ -884,7 +875,6 @@ class StockVideoProvider:
         )
 
     def _fetch_pexels(self, query: str) -> bytes:
-        import urllib.parse
         params = urllib.parse.urlencode({
             "query": query, "per_page": 5, "orientation": "landscape",
         })
@@ -906,7 +896,6 @@ class StockVideoProvider:
         return self._download(files[0]["link"])
 
     def _fetch_pixabay(self, query: str) -> bytes:
-        import urllib.parse
         params = urllib.parse.urlencode({
             "key": self.pixabay_key or "", "q": query, "per_page": 5,
         })
@@ -993,7 +982,7 @@ class KenBurnsProvider:
             # 1. Narration. A failure here must surface, not become a silent video.
             tts_path = self._generate_tts(spoken, duration)
             tmp_files.append(tts_path)
-            speech_seconds = probe_duration(self._toolchain, tts_path)
+            _speech_seconds = probe_duration(self._toolchain, tts_path)
 
             # 2. Background music
             music_path = self._generate_bg_music(prompt, duration, music_mode)
@@ -1140,7 +1129,6 @@ class KenBurnsProvider:
         frames = bytearray()
         for i in range(total_frames):
             t = i / sample_rate
-            bar_pos = t % bar_sec
             beat_pos = t % beat_sec
             chord_idx = int((t / bar_sec) % len(progressions))
             chord = progressions[(prog_idx + chord_idx) % len(progressions)]
@@ -1153,7 +1141,7 @@ class KenBurnsProvider:
             sample += 0.25 * bass_env * math.sin(2 * math.pi * bass_freq * t)
 
             # Pad chords (sustained)
-            for j, freq in enumerate(chord):
+            for freq in chord:
                 detune = 1.0 + (next_rand() * 0.002)
                 pad_vol = 0.12 * (0.6 + 0.4 * math.sin(2 * math.pi * 0.25 * t))
                 sample += pad_vol * math.sin(2 * math.pi * freq * detune * t)
@@ -1250,8 +1238,6 @@ class KenBurnsProvider:
         Returns an empty list on any failure so the caller can fall back to stock
         photos or the gradient background.
         """
-        import urllib.parse
-        import urllib.request
 
         topic = (prompt or "abstract background").strip()[:200]
         images: list[Path] = []
@@ -1281,7 +1267,6 @@ class KenBurnsProvider:
 
     def _download_images(self, prompt: str, width: int, height: int, count: int) -> list[Path]:
         """Download multiple relevant stock images; returns list of temp paths."""
-        import urllib.request
         keywords = [w for w in prompt.lower().split() if len(w) > 3][:3]
         base_queries = [
             "+".join(keywords) if keywords else "nature",
@@ -1430,8 +1415,8 @@ class KenBurnsProvider:
 
         zoom_end = 1.15
         zoom_expr = f"zoom+{(zoom_end - 1.0) / (duration * VIDEO_FPS):.8f}"
-        pan_x = f"(iw-iw/zoom)/2"
-        pan_y = f"(ih-ih/zoom)/2"
+        pan_x = "(iw-iw/zoom)/2"
+        pan_y = "(ih-ih/zoom)/2"
 
         zoompan = (
             f"zoompan=z='{zoom_expr}':x='{pan_x}':y='{pan_y}'"
@@ -1516,7 +1501,7 @@ class KenBurnsProvider:
             result = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries", "format=duration",
                  "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, check=False,
             )
             return float(result.stdout.strip())
         except Exception:
@@ -1577,7 +1562,6 @@ class KenBurnsProvider:
         Returns a filter string that dims the bottom band and then layers one
         time-gated `drawtext` per caption cue.
         """
-        import tempfile
 
         parts = ["drawbox=x=0:y=ih*0.7:w=iw:h=ih*0.3:color=black@0.45:t=fill"]
         font_opt = ""
@@ -1821,7 +1805,7 @@ class OfflineMusicProvider:
     def generate(self, prompt: str, lyrics: str = "", duration: int = 180,
                  genre: str = "pop", mood: str = "happy", **kwargs: Any) -> bytes:
         from .music_synth import compose, mix_to_wav_bytes
-        mix, meta = compose(prompt, genre, mood, min(duration, 600), lyrics=lyrics)
+        mix, _meta = compose(prompt, genre, mood, min(duration, 600), lyrics=lyrics)
         return mix_to_wav_bytes(mix)
 
 

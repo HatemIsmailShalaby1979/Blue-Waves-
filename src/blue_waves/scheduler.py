@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from .config import Settings
 from .governance import Governance
-from .models import ContentRequest, now_iso
+from .models import now_iso
 from .queue import ContentQueue
 
 
@@ -35,14 +35,14 @@ class PublishWindow:
 
 class Scheduler:
     """Autonomous scheduler with batch processing, time windows, and recurring schedules.
-    
+
     Supports 3+ publishes per week with configurable windows and recurrence.
     """
 
     def __init__(
-        self, 
-        settings: Settings, 
-        governance: Governance, 
+        self,
+        settings: Settings,
+        governance: Governance,
         queue: ContentQueue,
         publish_window: PublishWindow | None = None,
         executor: Callable[[ScheduledJob], dict[str, Any] | None] | None = None,
@@ -78,7 +78,7 @@ class Scheduler:
         # If currently in window, return now
         if self._is_in_publish_window(now):
             return now
-        
+
         # Find next valid day
         for days_ahead in range(1, 8):
             candidate = now + timedelta(days=days_ahead)
@@ -90,29 +90,29 @@ class Scheduler:
         return now  # Fallback
 
     def schedule_batch(
-        self, 
-        content_type: str, 
+        self,
+        content_type: str,
         count: int = 3,
         priority: int = 0,
         recurrence: str | None = None
     ) -> list[ScheduledJob]:
         """Schedule a batch of requests for publishing."""
         self._reset_weekly_counter()
-        
+
         # Check weekly limit
         remaining = self._settings.max_weekly_publishes - self._weekly_published
         if remaining <= 0:
             return []  # Weekly cap reached
-        
+
         count = min(count, remaining)
-        
+
         scheduled = []
         pending = self._queue.get_by_stage("queued")
         type_pending = [r for r in pending if r.content_type == content_type]
-        
+
         # Sort by priority (highest first)
         type_pending.sort(key=lambda r: getattr(r, 'priority', 0), reverse=True)
-        
+
         for request in type_pending[:count]:
             next_pub = self._get_next_publish_time()
             job = ScheduledJob(
@@ -127,7 +127,7 @@ class Scheduler:
             scheduled.append(job)
             request.advance_stage()
             self._weekly_published += 1
-        
+
         return scheduled
 
     def schedule_recurring(
@@ -189,7 +189,7 @@ class Scheduler:
         application layer (``run_automated_cycle``); this method stays
         ledger-free so it remains unit-testable without an app instance.
         """
-        queued = [r for r in self._queue.get_by_stage("queued")]
+        queued = list(self._queue.get_by_stage("queued"))
         # Priority ordering: high first, then normal, then low.
         order = {"high": 0, "normal": 1, "low": 2}
         queued.sort(key=lambda r: order.get(getattr(r, "priority", "normal"), 1))

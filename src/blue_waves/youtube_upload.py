@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -74,21 +73,14 @@ class YouTubeUploadService:
         mood: str = "calm",
     ) -> dict[str, Any]:
         """Generate SEO-optimized metadata for YouTube upload."""
-        
-        # Title templates by content type
-        title_templates = {
-            "video": "{topic} - Complete Tutorial",
-            "music": "{topic} - {mood} {genre} Background Music",
-            "podcast": "{topic} - Podcast Episode",
-        }
-        
+
         # Base tags by content type
         base_tags = {
             "video": ["tutorial", "education", "how to", "learn"],
             "music": ["background music", "royalty free", "no copyright"],
             "podcast": ["podcast", "education", "audio"],
         }
-        
+
         # Pillar-specific tags
         pillar_tags = {
             "education": ["educational", "learning", "study", "course"],
@@ -96,7 +88,7 @@ class YouTubeUploadService:
             "science": ["science", "research", "discovery", "experiment"],
             "business": ["business", "entrepreneurship", "startup", "marketing"],
         }
-        
+
         # Language-specific tags
         lang_tags = {
             "en": ["english"],
@@ -104,7 +96,7 @@ class YouTubeUploadService:
             "es": ["spanish", "español"],
             "fr": ["french", "français"],
         }
-        
+
         suffixes = {"video": "Complete Tutorial", "music": f"{mood} {genre} Background Music", "podcast": "Podcast Episode"}
         suffix = suffixes.get(content_type, "")
         if suffix:
@@ -112,7 +104,7 @@ class YouTubeUploadService:
             title = f"{topic[:available_topic].rstrip()} - {suffix}"
         else:
             title = topic[:95]
-        
+
         # Build description
         desc_lines = [
             f"Learn about {topic} in this {content_type}.",
@@ -122,22 +114,22 @@ class YouTubeUploadService:
             "",
             "#Education #Tutorial #Learning",
         ]
-        
+
         if pillar != "education":
             desc_lines.insert(2, f"Category: {pillar.title()}")
-        
+
         description = "\n".join(desc_lines)
-        
+
         # Combine tags
         tags = set(base_tags.get(content_type, []))
         tags.update(pillar_tags.get(pillar, []))
         tags.update(lang_tags.get(language, []))
         if extra_tags:
             tags.update(extra_tags)
-        
+
         # Limit to 500 chars total for tags
         tag_list = list(tags)[:15]
-        
+
         return {
             "title": title,
             "description": description[:4800],

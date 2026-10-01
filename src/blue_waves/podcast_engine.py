@@ -11,7 +11,7 @@ from typing import Any
 from .config import Settings
 from .dialogue import build_dialogue, dialogue_to_script, language_label, voices_for
 from .governance import Governance
-from .models import AssetStatus, PodcastAsset, now_iso
+from .models import AssetStatus, PodcastAsset
 from .providers import ProviderHealthMonitor, ProviderRegistry, ProviderUnavailable
 from .toolchain import AUDIO_CHANNELS, AUDIO_SAMPLE_RATE
 
@@ -39,7 +39,8 @@ class PodcastEngine:
 
     def generate(self, topic: str, script: str, host_voice: str = "21m00Tcm4TlvDq8ikWAM",
                  guest_voice: str | None = "EXAVITQu4vr4xnSDxMaL", duration_seconds: int = 1800,
-                 format: str = "dialogue", music_intro: bool = True,
+                 format: str = "dialogue",  # pylint: disable=redefined-builtin  # public API parameter (media format)
+                 music_intro: bool = True,
                  music_outro: bool = True, quality: str = "high",
                  language: str = "en", two_voices: bool = True,
                  host_name: str = "Host", guest_name: str = "Guest") -> PodcastGenerationResult:
@@ -136,38 +137,38 @@ class PodcastEngine:
         music_outro_path = None
         if music_intro or music_outro:
             for music_provider in self._music_candidates(quality):
-              reservation = None
-              try:
-                if self._providers:
-                    reservation = self._providers.rotation.reserve(
-                        music_provider.name,
-                        monthly_budget_cents=self._settings.monthly_cloud_cents,
-                    )
-                    if reservation is None:
-                        continue
-                if music_intro:
-                    music_intro_audio = music_provider.generate(
-                        prompt=f"podcast intro for {topic}",
-                        duration=15,
-                    )
-                    music_intro_path = str(Path(self._settings.data_dir) / "podcasts" / f"{asset_id}-intro.wav")
-                    Path(music_intro_path).parent.mkdir(parents=True, exist_ok=True)
-                    Path(music_intro_path).write_bytes(music_intro_audio)
-                if music_outro:
-                    music_outro_audio = music_provider.generate(
-                        prompt=f"podcast outro for {topic}",
-                        duration=15,
-                    )
-                    music_outro_path = str(Path(self._settings.data_dir) / "podcasts" / f"{asset_id}-outro.wav")
-                    Path(music_outro_path).parent.mkdir(parents=True, exist_ok=True)
-                    Path(music_outro_path).write_bytes(music_outro_audio)
-                asset.music_provider = music_provider.name
-                self._health.record_success(music_provider.name)
-                break
-              except Exception as exc:
-                if reservation is not None and self._providers:
-                    self._providers.rotation.release(reservation)
-                self._health.record_failure(music_provider.name, str(exc))
+                reservation = None
+                try:
+                    if self._providers:
+                        reservation = self._providers.rotation.reserve(
+                            music_provider.name,
+                            monthly_budget_cents=self._settings.monthly_cloud_cents,
+                        )
+                        if reservation is None:
+                            continue
+                    if music_intro:
+                        music_intro_audio = music_provider.generate(
+                            prompt=f"podcast intro for {topic}",
+                            duration=15,
+                        )
+                        music_intro_path = str(Path(self._settings.data_dir) / "podcasts" / f"{asset_id}-intro.wav")
+                        Path(music_intro_path).parent.mkdir(parents=True, exist_ok=True)
+                        Path(music_intro_path).write_bytes(music_intro_audio)
+                    if music_outro:
+                        music_outro_audio = music_provider.generate(
+                            prompt=f"podcast outro for {topic}",
+                            duration=15,
+                        )
+                        music_outro_path = str(Path(self._settings.data_dir) / "podcasts" / f"{asset_id}-outro.wav")
+                        Path(music_outro_path).parent.mkdir(parents=True, exist_ok=True)
+                        Path(music_outro_path).write_bytes(music_outro_audio)
+                    asset.music_provider = music_provider.name
+                    self._health.record_success(music_provider.name)
+                    break
+                except Exception as exc:
+                    if reservation is not None and self._providers:
+                        self._providers.rotation.release(reservation)
+                    self._health.record_failure(music_provider.name, str(exc))
 
         mixed_audio = self._mix_speech_and_music(
             host_audio, music_intro_path, music_outro_path, duration_seconds
@@ -222,8 +223,8 @@ class PodcastEngine:
         return [self._select_music_provider()]
 
     @staticmethod
-    def _dialogue_segments(script: str, format: str, host_voice: str, guest_voice: str | None) -> list[tuple[str, str]]:
-        if format != "dialogue" or not guest_voice:
+    def _dialogue_segments(script: str, fmt: str, host_voice: str, guest_voice: str | None) -> list[tuple[str, str]]:
+        if fmt != "dialogue" or not guest_voice:
             return [(script, host_voice)]
         from .dialogue import _strip_speaker_label
         host_parts: list[str] = []
@@ -327,7 +328,6 @@ class PodcastEngine:
             if has_outro:
                 idx = 2 if has_intro else 1
                 inputs.extend(["-i", outro_path])
-                fade_out_start = max(0, duration - 18)
                 filter_parts.append(
                     f"[{idx}:a]aformat=sample_rates={AUDIO_SAMPLE_RATE}:channel_layouts=stereo,"
                     f"volume=0.08,afade=t=in:st=0:d=2,afade=t=out:st=12:d=3[music_out];"
@@ -350,8 +350,8 @@ class PodcastEngine:
             # Sidechain compression: music ducks when speech is present
             # sidechaincompress makes music -20dB quieter when speech is detected
             filter_parts.append(
-                f"[0:a][music]sidechaincompress="
-                f"threshold=0.04:ratio=8:attack=5:release=300:level_sc=1[ducked_music];"
+                "[0:a][music]sidechaincompress="
+                "threshold=0.04:ratio=8:attack=5:release=300:level_sc=1[ducked_music];"
             )
             # Mix speech + ducked music, then loudnorm to -16 LUFS for podcast
             filter_parts.append(

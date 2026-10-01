@@ -45,19 +45,18 @@ YOUTUBE_SCOPE_NAMES: tuple[str, ...] = (
 
 def _validate_token_url(url: str) -> None:
     """Validate URL to prevent SSRF for OAuth token endpoint."""
-    import urllib.parse
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise RuntimeError(f"Invalid URL scheme: {parsed.scheme}")
-    
+
     hostname = parsed.hostname
     if not hostname:
         raise RuntimeError("URL missing hostname")
-    
+
     # Allow localhost for local development
     if hostname in ("localhost", "127.0.0.1", "::1"):
         return
-    
+
     # Check against allowed hosts
     if hostname not in ALLOWED_TOKEN_HOSTS:
         raise RuntimeError(f"Host not allowed: {hostname}")

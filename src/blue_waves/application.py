@@ -36,6 +36,7 @@ from .youtube_upload import YouTubeUploadService, create_youtube_service_from_oa
 class BlueWavesApplication:
     """Business workflow for Blue Waves, independent of Codex implementation details."""
 
+    # pylint: disable=too-many-instance-attributes  # facade aggregating every subsystem
     def __init__(self, settings: Settings | None = None, codex: CodexClient | None = None):
         self.settings = settings or Settings.from_env()
         self.settings.ensure_data_dir()
@@ -293,7 +294,7 @@ class BlueWavesApplication:
     def publish(self, asset: ContentAsset, channel: str, weekly_count: int = 0) -> dict[str, Any]:
         self.governance.assert_publishable(asset, channel, weekly_count)
         self.governance.assert_action_allowed("publish")
-        
+
         # Actually upload to YouTube if channel is youtube and upload is enabled
         youtube_result = None
         if channel == "youtube" and self.settings.youtube_upload_enabled:
@@ -318,7 +319,7 @@ class BlueWavesApplication:
                 asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
                 asset.media_manifest["youtube_url"] = youtube_result["video_url"]
                 asset.media_manifest["seo_metadata"] = seo
-        
+
         asset.transition(AssetStatus.PUBLISHED)
         publication = {
             "publication_id": f"pub-{uuid.uuid4().hex[:10]}",
@@ -386,15 +387,15 @@ class BlueWavesApplication:
             asset = self.podcast_assets[asset_id]
         else:
             raise KeyError(f"unknown asset: {asset_id}")
-        
+
         youtube_id = asset.media_manifest.get("youtube_video_id")
         if not youtube_id:
             raise ValueError(f"Asset {asset_id} has no YouTube video ID")
-        
+
         analytics = self.fetch_youtube_analytics(youtube_id)
         for metric_name, value in analytics.items():
             self.record_media_metric(asset_id, "youtube", metric_name, float(value), source="youtube_api")
-        
+
         return analytics
 
     def sync_all_published_metrics(self) -> dict[str, Any]:
@@ -587,34 +588,34 @@ class BlueWavesApplication:
 
     def generate_podcast_rss(self, base_url: str = "") -> str:
         """Generate RSS 2.0 feed for published podcasts.
-        
+
         Supports both YouTube-hosted podcasts and local audio files.
         For local files, provides a placeholder URL that can be replaced when hosted.
         """
         import xml.etree.ElementTree as ET
         from datetime import datetime
-        
+
         rss = ET.Element("rss", version="2.0", xmlns_itunes="http://www.itunes.com/dtds/podcast-1.0.dtd")
         channel = ET.SubElement(rss, "channel")
-        
+
         ET.SubElement(channel, "title").text = "Blue Waves Podcasts"
         ET.SubElement(channel, "link").text = base_url or "https://bluewaves.example.com"
         ET.SubElement(channel, "description").text = "Educational podcasts from Blue Waves"
         ET.SubElement(channel, "language").text = "en"
         ET.SubElement(channel, "lastBuildDate").text = datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
-        
+
         # iTunes specific tags
         itunes_owner = ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}owner")
         ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}name").text = "Blue Waves"
         ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}email").text = "podcasts@bluewaves.example.com"
         ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}category", text="Education")
         ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}explicit").text = "false"
-        
+
         # Add podcast items
         for asset in sorted(self.podcast_assets.values(), key=lambda a: a.created_at, reverse=True):
             if asset.status != AssetStatus.PUBLISHED:
                 continue
-            
+
             # Determine audio URL - prefer YouTube, fallback to local path
             youtube_id = asset.media_manifest.get("youtube_video_id")
             if youtube_id:
@@ -626,20 +627,20 @@ class BlueWavesApplication:
                 audio_type = "audio/wav"
             else:
                 continue  # Skip if no audio source
-            
+
             item = ET.SubElement(channel, "item")
             ET.SubElement(item, "title").text = asset.title
             ET.SubElement(item, "description").text = f"Podcast about {asset.topic}"
             ET.SubElement(item, "pubDate").text = datetime.fromisoformat(asset.created_at.replace('Z', '+00:00')).strftime("%a, %d %b %Y %H:%M:%S GMT")
             ET.SubElement(item, "guid").text = asset.asset_id
-            
+
             # Enclosure for audio
             ET.SubElement(item, "enclosure", url=audio_url, type=audio_type, length="0")
-            
+
             # iTunes tags
             ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}duration").text = str(asset.duration_target_seconds)
             ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}episodeType").text = "full"
-        
+
         # Pretty print
         ET.indent(rss, space="  ")
         return ET.tostring(rss, encoding="unicode", xml_declaration=True)
@@ -659,18 +660,26 @@ class BlueWavesApplication:
     def reject_music(self, asset_id: str, reason: str = "owner rejected", approver: str | None = None) -> dict[str, Any]:
         self.governance.assert_owner(approver or self.settings.owner_actor)
         asset = self.music_assets.get(asset_id)
-        if not asset: raise KeyError(f"unknown music asset: {asset_id}")
-        if asset.status is not AssetStatus.AWAITING_OWNER: raise GovernanceViolation(f"asset is not awaiting owner approval: {asset.status}")
-        asset.transition(AssetStatus.REJECTED); asset.rejection_reason = reason; self.store.save_music(asset)
+        if not asset:
+            raise KeyError(f"unknown music asset: {asset_id}")
+        if asset.status is not AssetStatus.AWAITING_OWNER:
+            raise GovernanceViolation(f"asset is not awaiting owner approval: {asset.status}")
+        asset.transition(AssetStatus.REJECTED)
+        asset.rejection_reason = reason
+        self.store.save_music(asset)
         self.ledger.append("music_rejected", {"asset_id": asset_id, "reason": reason}, self.settings.tenant_id, self.settings.owner_actor)
         return {"asset_id": asset_id, "status": "rejected", "reason": reason}
 
     def reject_podcast(self, asset_id: str, reason: str = "owner rejected", approver: str | None = None) -> dict[str, Any]:
         self.governance.assert_owner(approver or self.settings.owner_actor)
         asset = self.podcast_assets.get(asset_id)
-        if not asset: raise KeyError(f"unknown podcast asset: {asset_id}")
-        if asset.status is not AssetStatus.AWAITING_OWNER: raise GovernanceViolation(f"asset is not awaiting owner approval: {asset.status}")
-        asset.transition(AssetStatus.REJECTED); asset.rejection_reason = reason; self.store.save_podcast(asset)
+        if not asset:
+            raise KeyError(f"unknown podcast asset: {asset_id}")
+        if asset.status is not AssetStatus.AWAITING_OWNER:
+            raise GovernanceViolation(f"asset is not awaiting owner approval: {asset.status}")
+        asset.transition(AssetStatus.REJECTED)
+        asset.rejection_reason = reason
+        self.store.save_podcast(asset)
         self.ledger.append("podcast_rejected", {"asset_id": asset_id, "reason": reason}, self.settings.tenant_id, self.settings.owner_actor)
         return {"asset_id": asset_id, "status": "rejected", "reason": reason}
 
@@ -735,24 +744,32 @@ class BlueWavesApplication:
 
     def intelligence(self) -> dict[str, Any]:
         assets: dict[str, dict[str, Any]] = {}
-        for asset in self.assets.values(): assets[asset.asset_id] = {"content_type": "video", "topic": asset.topic, "provider": asset.media_manifest.get("provider", "unknown")}
-        for asset in self.music_assets.values(): assets[asset.asset_id] = {"content_type": "music", "topic": asset.title, "provider": asset.provider}
-        for asset in self.podcast_assets.values(): assets[asset.asset_id] = {"content_type": "podcast", "topic": asset.topic, "provider": asset.tts_provider}
+        for asset in self.assets.values():
+            assets[asset.asset_id] = {"content_type": "video", "topic": asset.topic, "provider": asset.media_manifest.get("provider", "unknown")}
+        for asset in self.music_assets.values():
+            assets[asset.asset_id] = {"content_type": "music", "topic": asset.title, "provider": asset.provider}
+        for asset in self.podcast_assets.values():
+            assets[asset.asset_id] = {"content_type": "podcast", "topic": asset.topic, "provider": asset.tts_provider}
         return {"performance_ranking": self.metacognition.rank_assets(assets), "shipo": self.metacognition.shipo_recommendations(assets), "approved_memory": self.metacognition.memories()}
 
     def approve_memory(self, memory_id: str) -> dict[str, Any]:
         candidate = next((item for item in self.metacognition.rank_assets(self._intelligence_assets()) if item["memory_id"] == memory_id), None)
-        if not candidate: raise KeyError(f"unknown memory proposal: {memory_id}")
+        if not candidate:
+            raise KeyError(f"unknown memory proposal: {memory_id}")
         memory = PerformanceMemory(**candidate)
-        approved = self.metacognition.approve(memory); self.store.save_memory(approved)
+        approved = self.metacognition.approve(memory)
+        self.store.save_memory(approved)
         self.ledger.append("performance_memory_approved", approved.to_dict(), self.settings.tenant_id, self.settings.owner_actor)
         return approved.to_dict()
 
     def _intelligence_assets(self) -> dict[str, dict[str, Any]]:
         data = {}
-        for a in self.assets.values(): data[a.asset_id] = {"content_type":"video", "topic":a.topic, "provider":a.media_manifest.get("provider", "unknown")}
-        for a in self.music_assets.values(): data[a.asset_id] = {"content_type":"music", "topic":a.title, "provider":a.provider}
-        for a in self.podcast_assets.values(): data[a.asset_id] = {"content_type":"podcast", "topic":a.topic, "provider":a.tts_provider}
+        for a in self.assets.values():
+            data[a.asset_id] = {"content_type":"video", "topic":a.topic, "provider":a.media_manifest.get("provider", "unknown")}
+        for a in self.music_assets.values():
+            data[a.asset_id] = {"content_type":"music", "topic":a.title, "provider":a.provider}
+        for a in self.podcast_assets.values():
+            data[a.asset_id] = {"content_type":"podcast", "topic":a.topic, "provider":a.tts_provider}
         return data
 
     def weekly_review(self) -> dict[str, Any]:
@@ -923,7 +940,7 @@ class BlueWavesApplication:
     @staticmethod
     def _probe_audio_file(path: Path) -> dict[str, Any] | None:
         """ffprobe a file; None when unreadable. No exceptions escape."""
-        import json as _json
+        import json as _json  # pylint: disable=reimported  # local scope shadows module json; alias avoids the clash
         import subprocess as _subprocess
         try:
             out = _subprocess.run(
@@ -1328,7 +1345,8 @@ class BlueWavesApplication:
 
     def generate_podcast(self, topic: str, script: str, host_voice: str = "en-US-AriaNeural",
                          guest_voice: str | None = None, duration_seconds: int = 1800,
-                         format: str = "dialogue", quality: str = "high",
+                         format: str = "dialogue",  # pylint: disable=redefined-builtin  # public API parameter (media format)
+                         quality: str = "high",
                          language: str = "en", host_name: str = "Host",
                          guest_name: str = "Guest") -> PodcastAsset | None:
         estimated = self.provider_registry.estimated_cost_for("tts", quality)
@@ -1483,7 +1501,7 @@ class BlueWavesApplication:
         asset.quality_score, asset.quality_issues = quality.score, quality.issues
         if not quality.passed:
             raise GovernanceViolation(f"owner approval blocked by quality gate: {', '.join(quality.issues)}")
-        approval = self.governance.approve(
+        self.governance.approve(
             asset, requested_by="BELAL",
             approver=approver or self.settings.owner_actor,
         )
@@ -1500,7 +1518,7 @@ class BlueWavesApplication:
         asset.quality_score, asset.quality_issues = quality.score, quality.issues
         if not quality.passed:
             raise GovernanceViolation(f"owner approval blocked by quality gate: {', '.join(quality.issues)}")
-        approval = self.governance.approve(
+        self.governance.approve(
             asset, requested_by="ZACK",
             approver=approver or self.settings.owner_actor,
         )
@@ -1513,7 +1531,7 @@ class BlueWavesApplication:
         if not asset:
             raise KeyError(f"unknown music asset: {asset_id}")
         self.governance.assert_publishable_music(asset, self.queue.get_weekly_count("music"))
-        
+
         youtube_result = None
         if channel == "youtube" and self.settings.youtube_upload_enabled:
             youtube_service = self._get_youtube_service()
@@ -1541,7 +1559,7 @@ class BlueWavesApplication:
                 asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
                 asset.media_manifest["youtube_url"] = youtube_result["video_url"]
                 asset.media_manifest["seo_metadata"] = seo
-        
+
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_music(asset)
         self.ledger.append("music_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")
@@ -1552,7 +1570,7 @@ class BlueWavesApplication:
         if not asset:
             raise KeyError(f"unknown podcast asset: {asset_id}")
         self.governance.assert_publishable_podcast(asset, self.queue.get_weekly_count("podcast"))
-        
+
         youtube_result = None
         if channel == "youtube" and self.settings.youtube_upload_enabled:
             youtube_service = self._get_youtube_service()
@@ -1578,7 +1596,7 @@ class BlueWavesApplication:
                 asset.media_manifest["youtube_video_id"] = youtube_result["video_id"]
                 asset.media_manifest["youtube_url"] = youtube_result["video_url"]
                 asset.media_manifest["seo_metadata"] = seo
-        
+
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_podcast(asset)
         self.ledger.append("podcast_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")

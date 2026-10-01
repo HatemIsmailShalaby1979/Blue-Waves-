@@ -46,9 +46,9 @@ class CockpitApp:
         try:
             if content_type == "music":
                 return self._app.approve_music(asset_id)
-            elif content_type == "podcast":
+            if content_type == "podcast":
                 return self._app.approve_podcast(asset_id)
-            elif content_type == "video":
+            if content_type == "video":
                 asset = self._app.get_asset(asset_id)
                 return self._app.owner_approve(asset)
         except Exception as exc:
@@ -131,14 +131,23 @@ class CockpitApp:
     def get_library(self) -> dict[str, Any]:
         items = []
         for asset_id, asset in self._app.music_assets.items():
-            d = asset.to_dict(); d["content_type"] = "music"; d["media_url"] = f"/media/music/{asset_id}"
-            d["media_exists"] = self._media_exists(asset.audio_path); items.append(d)
+            d = asset.to_dict()
+            d["content_type"] = "music"
+            d["media_url"] = f"/media/music/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.audio_path)
+            items.append(d)
         for asset_id, asset in self._app.podcast_assets.items():
-            d = asset.to_dict(); d["content_type"] = "podcast"; d["media_url"] = f"/media/podcast/{asset_id}"
-            d["media_exists"] = self._media_exists(asset.audio_path); items.append(d)
+            d = asset.to_dict()
+            d["content_type"] = "podcast"
+            d["media_url"] = f"/media/podcast/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.audio_path)
+            items.append(d)
         for asset_id, asset in self._app.assets.items():
-            d = asset.to_dict(); d["content_type"] = "video"; d["media_url"] = f"/media/video/{asset_id}"
-            d["media_exists"] = self._media_exists(asset.media_manifest.get("video_path")); items.append(d)
+            d = asset.to_dict()
+            d["content_type"] = "video"
+            d["media_url"] = f"/media/video/{asset_id}"
+            d["media_exists"] = self._media_exists(asset.media_manifest.get("video_path"))
+            items.append(d)
         items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return {"count": len(items), "items": items}
 
@@ -289,7 +298,8 @@ class CockpitApp:
                 return {"error": f"{content_type} generation failed — no provider in the chain succeeded. "
                                  f"Check the provider health panel and recent ledger events for per-provider reasons "
                                  f"(for music at high quality the local synth fallback is intentionally disabled)."}
-            d = asset.to_dict(); d["content_type"] = content_type
+            d = asset.to_dict()
+            d["content_type"] = content_type
             return d
         except Exception as exc:
             return {"error": str(exc)}
@@ -602,11 +612,11 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
     app: BlueWavesApplication
     cockpit: CockpitApp
 
-    def do_GET(self) -> None:
+    def do_GET(self) -> None:  # pylint: disable=too-many-branches,too-many-statements  # explicit HTTP dispatch; route-table refactor deferred
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/" or path == "/dashboard":
+        if path in ("/", "/dashboard"):
             self.serve_dashboard()
         elif path == "/api/dashboard":
             self.serve_json(self.cockpit.get_dashboard_data())
@@ -708,7 +718,7 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def do_POST(self) -> None:
+    def do_POST(self) -> None:  # pylint: disable=too-many-branches,too-many-statements  # explicit HTTP dispatch; route-table refactor deferred
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -932,9 +942,8 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
         """Return the comprehensive single-page Cockpit dashboard."""
         return DASHBOARD_HTML
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, format: str, *args: Any) -> None:  # pylint: disable=redefined-builtin  # signature fixed by http.server
         """Suppress default logging."""
-        pass
 
 
 def start_cockpit(app: BlueWavesApplication, host: str = "0.0.0.0", port: int = 8420) -> None:
@@ -944,9 +953,9 @@ def start_cockpit(app: BlueWavesApplication, host: str = "0.0.0.0", port: int = 
     CockpitHTTPHandler.cockpit = cockpit
 
     server = HTTPServer((host, port), CockpitHTTPHandler)
-    print(f"Blue Waves Cockpit v0.3.0")
+    print("Blue Waves Cockpit v0.3.0")
     print(f"Starting server on http://{host}:{port}")
-    print(f"Press Ctrl+C to stop")
+    print("Press Ctrl+C to stop")
 
     try:
         server.serve_forever()

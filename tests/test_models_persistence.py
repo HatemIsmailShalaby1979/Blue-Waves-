@@ -1,4 +1,4 @@
-from blue_waves.models import AssetStatus, Language, MusicAsset, PodcastAsset, music_asset_from_dict, podcast_asset_from_dict
+from blue_waves.models import Language, MusicAsset, PodcastAsset, music_asset_from_dict, podcast_asset_from_dict
 
 
 def test_music_manifest_survives_round_trip():

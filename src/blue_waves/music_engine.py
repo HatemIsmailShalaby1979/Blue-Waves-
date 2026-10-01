@@ -7,8 +7,8 @@ from typing import Any
 
 from .config import Settings
 from .governance import Governance
-from .models import AssetStatus, MusicAsset, now_iso
-from .providers import ProviderHealthMonitor, ProviderRegistry, ProviderUnavailable, AimlapiMusicProvider, KaiMusicProvider
+from .models import AssetStatus, MusicAsset
+from .providers import ProviderHealthMonitor, ProviderRegistry, ProviderUnavailable
 
 
 @dataclass
@@ -70,45 +70,45 @@ class MusicEngine:
                        "and no cloud music provider is configured — add a funded aimlapi key or upload an MP3"),
             )
         for provider in providers:
-          reservation = None
-          try:
-            if self._providers:
-                reservation = self._providers.rotation.reserve(
-                    provider.name,
-                    monthly_budget_cents=self._settings.monthly_cloud_cents,
+            reservation = None
+            try:
+                if self._providers:
+                    reservation = self._providers.rotation.reserve(
+                        provider.name,
+                        monthly_budget_cents=self._settings.monthly_cloud_cents,
+                    )
+                    if reservation is None:
+                        errors.append(f"{provider.name}: quota or budget unavailable")
+                        continue
+                audio_bytes = provider.generate(
+                    prompt=asset.prompt,
+                    lyrics=lyrics,
+                    duration=duration_seconds,
+                    genre=genre,
+                    mood=mood,
                 )
-                if reservation is None:
-                    errors.append(f"{provider.name}: quota or budget unavailable")
-                    continue
-            audio_bytes = provider.generate(
-                prompt=asset.prompt,
-                lyrics=lyrics,
-                duration=duration_seconds,
-                genre=genre,
-                mood=mood,
-            )
-            audio_path = str(Path(self._settings.data_dir) / "music" / f"{asset_id}.wav")
-            Path(audio_path).parent.mkdir(parents=True, exist_ok=True)
-            Path(audio_path).write_bytes(audio_bytes)
-            asset.provider = provider.name
-            asset.audio_path = audio_path
-            asset.transition(AssetStatus.MIXING)
-            asset.transition(AssetStatus.AWAITING_OWNER)
-            self._health.record_success(provider.name)
-            asset.metadata["provider_attempts"] = [p.name for p in providers]
-            if reservation is not None:
-                asset.metadata["quota_reservation"] = reservation.token
-            return MusicGenerationResult(
-                success=True,
-                asset=asset,
-                audio_path=audio_path,
-                provider_used=provider.name,
-            )
-          except Exception as exc:
-            if reservation is not None and self._providers:
-                self._providers.rotation.release(reservation)
-            self._health.record_failure(provider.name, str(exc))
-            errors.append(f"{provider.name}: {exc}")
+                audio_path = str(Path(self._settings.data_dir) / "music" / f"{asset_id}.wav")
+                Path(audio_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(audio_path).write_bytes(audio_bytes)
+                asset.provider = provider.name
+                asset.audio_path = audio_path
+                asset.transition(AssetStatus.MIXING)
+                asset.transition(AssetStatus.AWAITING_OWNER)
+                self._health.record_success(provider.name)
+                asset.metadata["provider_attempts"] = [p.name for p in providers]
+                if reservation is not None:
+                    asset.metadata["quota_reservation"] = reservation.token
+                return MusicGenerationResult(
+                    success=True,
+                    asset=asset,
+                    audio_path=audio_path,
+                    provider_used=provider.name,
+                )
+            except Exception as exc:
+                if reservation is not None and self._providers:
+                    self._providers.rotation.release(reservation)
+                self._health.record_failure(provider.name, str(exc))
+                errors.append(f"{provider.name}: {exc}")
         asset.transition(AssetStatus.REJECTED)
         return MusicGenerationResult(success=False, asset=asset, error="; ".join(errors))
 
@@ -120,7 +120,7 @@ class MusicEngine:
 
     def _provider_candidates(self, preferred_provider: str, quality: str) -> list[Any]:
         if self._providers:
-            # For high/premium: prefer Suno, then aimlapi, then ace_step, then local
+                # For high/premium: prefer Suno, then aimlapi, then ace_step, then local
             if quality in ("high", "premium"):
                 preferred = preferred_provider if preferred_provider != "ace_step" else "suno_api"
             else:
@@ -130,8 +130,8 @@ class MusicEngine:
             if quality in self.CLOUD_ONLY_QUALITIES or not allows_local_pixels(self._settings):
                 cloud = [p for p in candidates if p.name != "local_audio_fallback"]
                 if cloud or not allows_local_pixels(self._settings):
-                    # Possibly empty under a strict ban: the engine then fails
-                    # loudly instead of rendering synth noise.
+                        # Possibly empty under a strict ban: the engine then fails
+                        # loudly instead of rendering synth noise.
                     return cloud
             return candidates
         return [self._select_provider(preferred_provider)]
@@ -153,7 +153,6 @@ class MusicEngine:
         # Try LLM generation first
         if self._providers and hasattr(self._providers, '_text'):
             try:
-                from .providers import OpenAICompatibleProvider
                 text_provider = self._providers._text.get("local")
                 if text_provider and text_provider.configured:
                     system = "You are a professional songwriter. Write structured lyrics with verse/chorus/bridge sections."

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 from blue_waves.config import Settings
 from blue_waves.finance import FinanceEngine

@@ -1,0 +1,62 @@
+[MAIN]
+# Vendored third-party code lives under vendor/; it is not our code and is
+# linted separately. Scanning it only adds noise to our signal.
+ignore-paths = vendor/
+
+[TYPECHECK]
+# googleapiclient builds Resource members (videos/channels/thumbnails) at
+# runtime from the discovery document, and wave.open(..., 'wb') write handles
+# are misinferred as Wave_read; both are dynamic-API false positives.
+generated-members = videos,channels,thumbnails,setnchannels,setsampwidth,setframerate,writeframes
+
+[FORMAT]
+# Match the repository flake8 line-length ceiling (127) so pylint and flake8
+# agree on what "too long" means.
+max-line-length = 127
+# providers.py is one cohesive provider-catalog module; split deferred.
+max-module-lines = 2100
+
+[MESSAGES CONTROL]
+# missing-function-docstring: test functions are named by their assertions.
+# missing-module-docstring / missing-class-docstring: many small exception and
+#   dataclass types; docstring presence is enforced by review instead.
+# broad-exception-caught: providers and engines catch Exception at their
+#   boundaries on purpose - the constitution requires fail-closed behaviour,
+#   never a crashed pipeline.
+# import-outside-toplevel: function-level imports are deliberate
+#   (circular-import avoidance; lazy loading of heavy deps like googleapiclient).
+# unused-argument: parameters are retained for interface/signature conformance
+#   across provider and engine APIs even where an implementation ignores them.
+# protected-access: white-box tests and same-package engine wiring reach
+#   _private members by design (engine._providers re-wiring on reconfiguration).
+# duplicate-code: the music/video/podcast engines intentionally mirror each
+#   other's scaffolding; forcing divergence now would hurt readability.
+disable = missing-function-docstring,
+    missing-module-docstring,
+    missing-class-docstring,
+    broad-exception-caught,
+    import-outside-toplevel,
+    unused-argument,
+    protected-access,
+    duplicate-code
+
+[DESIGN]
+# Render pipelines and API entry points legitimately carry many arguments,
+# locals, branches and statements; thresholds are tuned to the observed
+# maxima of this codebase, not set sky-high.
+max-args = 14
+max-positional-arguments = 14
+max-locals = 55
+max-attributes = 30
+max-branches = 35
+max-statements = 105
+max-returns = 25
+max-nested-blocks = 8
+max-public-methods = 55
+# Many single-purpose helper and protocol classes have zero public methods.
+min-public-methods = 0
+
+[BASIC]
+# do_GET/do_POST are fixed by http.server; SC and bar are domain terms
+# (scale pitch count, musical bar); short loop names are conventional.
+good-names = i,j,k,ex,fd,_,bar,SC,do_GET,do_POST

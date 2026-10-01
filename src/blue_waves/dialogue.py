@@ -14,6 +14,7 @@ Templates use a single ``{topic}`` placeholder.
 
 from __future__ import annotations
 
+import re as _re
 from typing import Any
 
 
@@ -904,9 +905,6 @@ def _top_up(turns: list[tuple[str, str]], topic: str, pack: dict[str, Any],
         i += 1
     out.append(("host", _pick(t["close"], 0).format(topic=topic)))
     return out
-
-
-import re as _re
 
 
 _LABEL_RE = _re.compile(r"\[HOST\]|\[GUEST\]|HOST\s*:|GUEST\s*:", _re.IGNORECASE)

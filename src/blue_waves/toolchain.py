@@ -122,7 +122,7 @@ def probe_duration(toolchain: Toolchain, path: Path) -> float:
         result = subprocess.run(
             [toolchain.ffprobe, "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=15, check=False,
         )
         return float(result.stdout.strip())
     except (OSError, subprocess.SubprocessError, ValueError):
@@ -137,7 +137,7 @@ def probe_media(toolchain: Toolchain, path: Path) -> dict[str, Any]:
              "-show_entries", "format=duration,bit_rate",
              "-show_entries", "stream=codec_type,codec_name,width,height,channels,sample_rate,r_frame_rate,avg_frame_rate,bit_rate",
              "-of", "json", str(path)],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=20, check=False,
         )
         import json
 
@@ -178,7 +178,7 @@ def measure_silence_ratio(toolchain: Toolchain, path: Path, duration: float | No
             [toolchain.ffmpeg, "-v", "info", "-i", str(path),
              "-af", f"silencedetect=noise={SILENCE_NOISE_DB}dB:d={SILENCE_MIN_BLOCK}",
              "-f", "null", "-"],
-            capture_output=True, text=True, timeout=max(60, int(duration * 3)),
+            capture_output=True, text=True, timeout=max(60, int(duration * 3)), check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return 0.0

@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterable
 
-from .models import ApprovalRequest, ApprovalTier, AssetStatus, ContentAsset, CostEvent, now_iso
+from .models import ApprovalRequest, ApprovalTier, AssetStatus, ContentAsset, now_iso
 
 
 class GovernanceViolation(Exception):

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import uuid
-from dataclasses import dataclass, field
-from typing import Any
 
 from .config import Settings
-from .models import ContentRequest, now_iso
+from .models import ContentRequest
 
 
 class ContentQueue:

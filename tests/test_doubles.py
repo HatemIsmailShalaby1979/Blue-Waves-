@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
-from blue_waves.models import now_iso
 
 
 class InMemoryMusicProvider:
@@ -52,7 +50,8 @@ class InMemoryFinanceEngine:
         self.free_tiers: dict[str, dict[str, Any]] = {}
 
     def log_cost(self, provider: str, content_type: str, asset_id: str,
-                 credits: int, estimated_cents: int) -> None:
+                 credits: int,  # pylint: disable=redefined-builtin  # mirrors Finance.log_cost interface
+                 estimated_cents: int) -> None:
         self.costs.append({"provider": provider, "asset_id": asset_id, "cents": estimated_cents})
 
     def get_remaining_free_tier(self, provider: str) -> dict[str, Any]:

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
-from .toolchain import Toolchain, AUDIO_SAMPLE_RATE, LOUDNORM_FILTER, audio_output_args, find_font
+from .toolchain import Toolchain, AUDIO_SAMPLE_RATE, LOUDNORM_FILTER, find_font
 
 
 @dataclass
@@ -310,7 +310,7 @@ class VideoUseEditor:
 
         # Build caption filter — progressive drawtext synced to EDL
         caption_filters: list[str] = []
-        for i, entry in enumerate(edl[:max_captions]):
+        for entry in edl[:max_captions]:
             text = entry.get("text", "").strip()
             if not text:
                 continue
@@ -397,7 +397,7 @@ class VideoUseEditor:
         issues: list[str] = []
 
         try:
-            import json as _json
+            import json as _json  # pylint: disable=reimported  # local scope shadows module json; alias avoids the clash
             probe = subprocess.run(
                 ["ffprobe", "-v", "error", "-show_entries",
                  "stream=codec_type,width,height,codec_name,duration,bit_rate",

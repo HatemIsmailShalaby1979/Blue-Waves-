@@ -88,7 +88,8 @@ class FinanceEngine:
         self._free_cents: dict[str, int] = {}
 
     def log_cost(self, provider: str, content_type: str, asset_id: str,
-                 credits: int = 0, estimated_cents: int = 0,
+                 credits: int = 0,  # pylint: disable=redefined-builtin  # domain currency term, public interface
+                 estimated_cents: int = 0,
                  duration_seconds: int = 0, char_count: int = 0) -> None:
         """Log a real cost for a provider invocation.
 
@@ -99,7 +100,7 @@ class FinanceEngine:
             cost_info = PROVIDER_COSTS.get(provider, {})
             per_gen = cost_info.get("per_generation", 0)
             unit = cost_info.get("per_unit", "")
-            if unit == "song" or unit == "video" or unit == "request":
+            if unit in ("song", "video", "request"):
                 estimated_cents = per_gen
             elif unit == "1000_chars" and char_count > 0:
                 estimated_cents = max(1, (char_count // 1000 + 1) * per_gen) if per_gen else 0

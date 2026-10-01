@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from blue_waves.config import Settings
 from blue_waves.governance import Governance, Policy

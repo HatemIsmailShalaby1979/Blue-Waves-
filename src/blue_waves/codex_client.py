@@ -6,10 +6,8 @@ import urllib.request
 import urllib.parse
 import uuid
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol
 
-from .models import ContentAsset, MetricEvent
 
 
 # SSRF protection - allowlist for Codex endpoints
@@ -25,15 +23,15 @@ def _validate_url(url: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise RuntimeError(f"Invalid URL scheme: {parsed.scheme}")
-    
+
     hostname = parsed.hostname
     if not hostname:
         raise RuntimeError("URL missing hostname")
-    
+
     # Allow localhost for local development
     if hostname in ("localhost", "127.0.0.1", "::1"):
         return
-    
+
     # Check against allowed hosts
     if hostname not in ALLOWED_CODEX_HOSTS:
         raise RuntimeError(f"Host not allowed: {hostname}")

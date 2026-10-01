@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any
 
 try:
-    from enum import StrEnum
+    from enum import StrEnum  # pylint: disable=ungrouped-imports  # version-guarded fallback import
 except ImportError:  # pragma: no cover - Python 3.10 fallback
 
     class StrEnum(str, Enum):

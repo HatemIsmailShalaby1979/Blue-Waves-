@@ -1,7 +1,6 @@
 """Phase 10.6: Cockpit full control board."""
 from __future__ import annotations
 
-from pathlib import Path
 
 from blue_waves.application import BlueWavesApplication
 from blue_waves.cockpit_server import CockpitApp

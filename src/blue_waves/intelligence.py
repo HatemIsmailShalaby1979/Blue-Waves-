@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from typing import Any
-from uuid import uuid4
 
 from .models import now_iso
 

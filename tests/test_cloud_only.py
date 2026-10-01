@@ -42,11 +42,11 @@ def test_strict_video_fails_loudly_without_cloud(tmp_path):
     """No cloud video configured + ban active → None, no render attempted."""
     app = _strict_app(tmp_path)
     assert app.generate_video(topic="t", prompt="p", duration=2, quality="draft") is None
-    assert list(tmp_path.glob("videos/*")) == []
+    assert not list(tmp_path.glob("videos/*"))
 
 
 def test_strict_music_fails_loudly_without_funds(tmp_path):
     """aimlapi $0 + kai dead + ban → None with ledger reasons, never synth."""
     app = _strict_app(tmp_path)
     assert app.generate_music(topic="t", duration_seconds=10, quality="free") is None
-    assert list(tmp_path.glob("music/*")) == []
+    assert not list(tmp_path.glob("music/*"))

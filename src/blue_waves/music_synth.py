@@ -21,7 +21,7 @@ import hashlib
 import math
 import wave
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -114,8 +114,7 @@ def adsr_envelope(n: int, attack: float, decay: float, sustain: float,
         r = np.arange(n_r) / max(1, n_r)
         start = n_a + n_d + n_s
         end = start + n_r
-        if end > n:
-            end = n
+        end = min(end, n)
         env[start:end] = sustain * (1 - r[:end - start])
     else:
         env[n_a + n_d:] = sustain
@@ -133,7 +132,7 @@ _TABLE_SIZE = 4096
 _MAX_HARMONICS = 96
 
 
-def _bandlimited_table(wave: str, freq: float, sr: int = SR) -> np.ndarray:
+def _bandlimited_table(wave: str, freq: float, sr: int = SR) -> np.ndarray:  # pylint: disable=redefined-outer-name  # waveform-name parameter shadows the wave module
     """Single cycle of `wave` containing only harmonics below Nyquist.
 
     Cached per (wave, rounded Hz, sample rate). Pitch always comes from the
@@ -197,7 +196,7 @@ def _table_lookup(tbl: np.ndarray, cycles: np.ndarray) -> np.ndarray:
 
 
 def osc(freq: float, n: int, sr: int = SR, phase: float = 0.0,
-        wave: str = "sine", fm_ratio: float = 0.0, fm_index: float = 0.0) -> np.ndarray:
+        wave: str = "sine", fm_ratio: float = 0.0, fm_index: float = 0.0) -> np.ndarray:  # pylint: disable=redefined-outer-name  # waveform-name parameter shadows the wave module
     t = np.arange(n) / sr
     # Track phase in *cycles* so the same accumulator drives both the sine
     # path and the band-limited wavetable path.
@@ -209,7 +208,7 @@ def osc(freq: float, n: int, sr: int = SR, phase: float = 0.0,
     return np.sin(2 * np.pi * cycles)
 
 
-def note_buffer(freq: float, dur: float, wave: str = "sine",
+def note_buffer(freq: float, dur: float, wave: str = "sine",  # pylint: disable=redefined-outer-name  # waveform-name parameter shadows the wave module
                 amp: float = 0.3, attack: float = 0.01, decay: float = 0.1,
                 sustain: float = 0.8, release: float = 0.15,
                 vibrato: float = 0.0, vibrato_rate: float = 5.0,
@@ -220,7 +219,7 @@ def note_buffer(freq: float, dur: float, wave: str = "sine",
         return np.zeros(1)
     body = osc(freq, n, sr, wave=wave, fm_ratio=fm_ratio, fm_index=fm_index)
     if vibrato and vibrato_rate:
-        tb = (np.arange(n) / sr)
+        tb = np.arange(n) / sr
         # Modulate the phase accumulator rather than substituting a plain sine,
         # otherwise every vibrato voice silently loses its timbre.
         cycles = freq * tb + vibrato * np.sin(2 * np.pi * vibrato_rate * tb)
@@ -529,14 +528,14 @@ def compose(prompt: str, genre: str, mood: str, duration: float,
         """degree is an index (can be negative) into the scale, octave is the
         octave offset for the root (0 => around C3)."""
         idx = degree
-        oct = octave
+        oct_shift = octave
         while idx < 0:
             idx += SC
-            oct -= 1
+            oct_shift -= 1
         while idx >= SC:
             idx -= SC
-            oct += 1
-        semitone = root_pc + scale_pcs[idx] + 12 * oct
+            oct_shift += 1
+        semitone = root_pc + scale_pcs[idx] + 12 * oct_shift
         return _midi_freq(semitone)
 
     arr = Arrangement()

@@ -14,8 +14,9 @@ def patched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPat
     """Isolate the renderer from ffmpeg, the system temp dir, and font discovery."""
     real_mkstemp = tempfile.mkstemp
 
-    def fake_mkstemp(suffix: str = "", prefix: str = "tmp", dir: str | None = None, text: bool = False):
-        return real_mkstemp(suffix=suffix, prefix=prefix, dir=str(tmp_path), text=text)
+    def fake_mkstemp(suffix: str = "", prefix: str = "tmp", **kwargs):
+        kwargs.pop("dir", None)
+        return real_mkstemp(suffix=suffix, prefix=prefix, dir=str(tmp_path), **kwargs)
 
     monkeypatch.setattr("blue_waves.providers.tempfile.mkstemp", fake_mkstemp)
 
@@ -32,7 +33,7 @@ def _fake_images(tmp_path: Path, count: int) -> list[Path]:
     return [tmp_path / f"img_{i}.jpg" for i in range(count)]
 
 
-def test_ken_burns_render_single_image(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_ken_burns_render_single_image(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:  # pylint: disable=redefined-outer-name  # pytest fixture injection
     provider = KenBurnsProvider()
     images = _fake_images(tmp_path, 1)
     patched.setattr(provider, "_generate_topic_images", lambda *a, **k: images)
@@ -43,7 +44,7 @@ def test_ken_burns_render_single_image(patched: pytest.MonkeyPatch, tmp_path: Pa
     out.unlink(missing_ok=True)
 
 
-def test_ken_burns_render_multi_image(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_ken_burns_render_multi_image(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:  # pylint: disable=redefined-outer-name  # pytest fixture injection
     provider = KenBurnsProvider()
     images = _fake_images(tmp_path, 2)
     patched.setattr(provider, "_generate_topic_images", lambda *a, **k: images)
@@ -54,7 +55,7 @@ def test_ken_burns_render_multi_image(patched: pytest.MonkeyPatch, tmp_path: Pat
     out.unlink(missing_ok=True)
 
 
-def test_ken_burns_render_gradient_fallback(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_ken_burns_render_gradient_fallback(patched: pytest.MonkeyPatch, tmp_path: Path) -> None:  # pylint: disable=redefined-outer-name  # pytest fixture injection
     provider = KenBurnsProvider()
     patched.setattr(provider, "_generate_topic_images", lambda *a, **k: [])
     patched.setattr(provider, "_download_images", lambda *a, **k: [])
