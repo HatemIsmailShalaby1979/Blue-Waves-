@@ -35,6 +35,11 @@ from .enhancement import RESOLUTIONS
 VIDEO_FPS = 30
 
 
+def _ffmpeg_escape(value: str) -> str:
+    """Escape a string for safe inclusion in an ffmpeg filtergraph."""
+    return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
 class ProviderUnavailable(RuntimeError):
     pass
 
@@ -1327,9 +1332,6 @@ class KenBurnsProvider:
 
         font = find_font(bold=True)
 
-        def _ffmpeg_escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-
         escaped_text_path = _ffmpeg_escape(_ffmpeg_escape(text_path))
 
         # Build the visual track from on-topic imagery (Layer-2 free text-to-image),
@@ -1345,7 +1347,7 @@ class KenBurnsProvider:
 
         if img_paths:
             try:
-                return self._render_from_images(img_paths, text_path, escaped_text_path, font, width, height, duration, path, tmp_files)
+                return self._render_from_images(img_paths, text_path, escaped_text_path, font, width, height, duration, path, text_content, None)
             except Exception:
                 pass
             finally:
@@ -1356,11 +1358,9 @@ class KenBurnsProvider:
 
     def _render_from_images(self, img_paths: list[Path], text_path: str, escaped_text_path: str,
                             font: str | None, width: int, height: int, duration: int, path: Path,
-                            tmp_files: list[Path] | None = None) -> Path:
+                            text_content: str = "", tmp_files: list[Path] | None = None) -> Path:
         """Render video from multiple images with Ken Burns + crossfades."""
         tmp_files = tmp_files if tmp_files is not None else []
-        def _ffmpeg_escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
         num_images = len(img_paths)
         if num_images == 1:
@@ -1427,8 +1427,6 @@ class KenBurnsProvider:
                            font: str | None, width: int, height: int, duration: int, path: Path,
                            text_content: str = "", tmp_files: list[Path] | None = None) -> Path:
         tmp_files = tmp_files if tmp_files is not None else []
-        def _ffmpeg_escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
         zoom_end = 1.15
         zoom_expr = f"zoom+{(zoom_end - 1.0) / (duration * VIDEO_FPS):.8f}"
@@ -1462,9 +1460,6 @@ class KenBurnsProvider:
     def _render_gradient_fallback(self, text_content: str, escaped_text_path: str,
                                   font: str | None, width: int, height: int,
                                   duration: int, path: Path, text_path: str) -> Path:
-        def _ffmpeg_escape(value: str) -> str:
-            return value.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-
         drawtext = (
             f"drawtext=textfile={escaped_text_path}:"
             f"fontcolor=white:fontsize=36:line_spacing=12:"
