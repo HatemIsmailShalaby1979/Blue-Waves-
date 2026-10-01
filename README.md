@@ -58,7 +58,7 @@ framework's governance contract, with an independent runtime — not shared sour
 - Quality gates — `ffprobe` + FFT + LUFS + silence, hard thresholds.
 - Provider rotation — local plus cloud-ready; cloud providers fail closed until approved.
 - `audit_events` — hash-chained audit trail; every external action consent-gated.
-- SHEPO finance — real per-provider costs, CPM projection, break-even, provider ROI.
+- SHEPO finance — SHEPO is the finance agent of record: real per-provider costs, CPM projection, break-even, provider ROI.
 
 ## Production status & test coverage
 
