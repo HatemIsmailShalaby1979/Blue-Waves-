@@ -62,17 +62,19 @@ framework's governance contract, with an independent runtime — not shared sour
 
 ## Production status & test coverage
 
-Stated plainly and dated. This section is last by design.
+Stated plainly and dated. This section is last by design. The Snapshot column is the
+date that row's evidence was last captured; rows that were not re-measured keep their
+original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 125 collected (109 project + 16 vendored); all 109 project tests pass; one cockpit E2E test intermittently order-dependent | 2026-09-27 |
+| Tests | 163 collected (147 project + 16 vendored); 147 project tests pass; one cockpit E2E test intermittently order-dependent | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
 | Quality gates | `ffprobe` + FFT + LUFS + silence, hard thresholds | 2026-09-05 |
 | SHEPO finance | Real per-provider costs, CPM projection, break-even, provider ROI | 2026-09-05 |
-| Version | v0.3.0 | 2026-09-05 |
+| Version | v0.3.0 (`pyproject.toml`, `src/blue_waves/__init__.py`) | 2026-10-01 |
 
 > [!WARNING]
 > Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner.
