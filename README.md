@@ -77,7 +77,7 @@ original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 163 collected (147 project + 16 vendored); 147 project tests pass; cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
+| Tests | 125 collected in the tracked repository (109 project + 16 vendored), all pass; the current working tree collects 163 (147 project + 16 vendored), all pass — the extra 38 project tests are in untracked files from an uncommitted feature. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
 | CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
