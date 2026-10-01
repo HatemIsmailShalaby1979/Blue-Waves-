@@ -9,11 +9,21 @@ from blue_waves.application import BlueWavesApplication
 from blue_waves.config import Settings
 from blue_waves.service import BlueWavesHandler
 
+#: Client-side HTTP timeout for this end-to-end test.
+#:
+#: Real ffmpeg work (Ken Burns video, WAV mastering) runs *inside* the request
+#: handler, so a single call can take tens of seconds on a loaded machine. A
+#: tight 30 s timeout made this test flake — an intermittent ``TimeoutError`` was
+#: observed in a full-suite run, and isolated runs took 25-44 s. The test asserts
+#: functional behaviour (generate -> reject -> retry -> approve -> preview), not
+#: latency, so the timeout is sized generously instead of racing the clock.
+_HTTP_TIMEOUT_SECONDS = 180
+
 
 def _request(base_url: str, path: str, method: str = "GET", payload: dict | None = None) -> dict:
     body = json.dumps(payload).encode() if payload is not None else None
     request = Request(base_url + path, data=body, method=method, headers={"Content-Type": "application/json"})
-    with urlopen(request, timeout=30) as response:
+    with urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
         return json.loads(response.read())
 
 
@@ -48,7 +58,7 @@ def test_real_cockpit_generation_rejection_retry_approval_and_preview(tmp_path):
         assert approved["quality_score"] == 1.0
 
         media_request = Request(base_url + f"/media/video/{retry['asset_id']}")
-        with urlopen(media_request, timeout=30) as response:
+        with urlopen(media_request, timeout=_HTTP_TIMEOUT_SECONDS) as response:
             assert response.headers["Content-Type"] == "video/mp4"
             assert len(response.read()) > 0
 

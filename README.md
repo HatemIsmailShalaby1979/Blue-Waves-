@@ -69,7 +69,7 @@ original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 163 collected (147 project + 16 vendored); 147 project tests pass; one cockpit E2E test intermittently order-dependent | 2026-10-01 |
+| Tests | 163 collected (147 project + 16 vendored); 147 project tests pass; cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
 | CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
