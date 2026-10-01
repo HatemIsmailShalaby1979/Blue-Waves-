@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import asdict, replace
 from pathlib import Path
@@ -12,6 +13,7 @@ from .engines import FactCheckEngine, ProductionEngine, ResearchEngine, ScriptEn
 from .finance import FinanceEngine
 from .governance import Governance, GovernanceViolation, Policy
 from .hybrid import HybridRouter, Stage
+from .ingest import probe_video_file, resolution_label, sha256_file
 from .jobs import JobManager, VideoJob
 from .ledger import AppendOnlyLedger, JsonStore
 from .models import (AssetStatus, ContentAsset, ContentRequest, CostEvent, Language, MetricEvent,
@@ -644,7 +646,9 @@ class BlueWavesApplication:
 
     def reject_asset(self, asset: ContentAsset, reason: str = "owner rejected", approver: str | None = None) -> dict[str, Any]:
         self.governance.assert_owner(approver or self.settings.owner_actor)
-        if asset.status is not AssetStatus.AWAITING_OWNER:
+        # An unlisted upload can still be abandoned by the owner: the video stays
+        # on YouTube but the asset never reaches ``published``.
+        if asset.status not in (AssetStatus.AWAITING_OWNER, AssetStatus.UPLOADED_UNLISTED):
             raise GovernanceViolation(f"asset is not awaiting owner approval: {asset.status}")
         asset.transition(AssetStatus.REJECTED)
         asset.rejection_reason = reason
@@ -939,6 +943,388 @@ class BlueWavesApplication:
             }
         except Exception:
             return None
+
+    # ------------------------------------------------------------------ #
+    # External video ingest → unlisted upload → owner review → public    #
+    # ------------------------------------------------------------------ #
+
+    #: Video container extensions accepted by the external ingest path.
+    INGEST_VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", ".mkv")
+    #: Hard ceiling on an ingested source file (2 GiB).
+    MAX_INGEST_BYTES = 2 * 1024 * 1024 * 1024
+    #: Quota cost of a single ``videos.insert`` call, in Data API units.
+    VIDEOS_INSERT_QUOTA_UNITS = 1600
+    #: Default daily quota for a Google Cloud project, in Data API units.
+    YOUTUBE_DAILY_QUOTA_UNITS = 10000
+    #: The known-good reference video used to detect the unverified-project lock.
+    YOUTUBE_REFERENCE_VIDEO_ID = "NHXdNQzF5m0"
+    #: Scope required by ``videos.update`` (privacy flip), full and short form.
+    FORCE_SSL_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl"
+    FORCE_SSL_SCOPE_SHORT = "youtube.force-ssl"
+
+    def ingest_external_video(self, source_path: Path | str, topic: str, title: str = "",
+                              pillar: str = "education", language: str = "en",
+                              source: str = "external_file") -> ContentAsset:
+        """Bring an externally produced video into the pipeline as a first-class asset.
+
+        The source file is validated, hashed, copied into ``data/videos/`` and
+        re-hashed; the managed copy is what every later stage reads, so
+        provenance points at an app-controlled artifact rather than the owner's
+        working directory. The asset lands in ``awaiting_owner`` — the owner
+        gate is unchanged, and no publish path can be reached without it.
+
+        Raises ``ValueError`` on any validation failure; nothing is left behind.
+        """
+        import shutil
+
+        source_file = Path(source_path)
+        if not source_file.exists():
+            raise ValueError(f"source file not found: {source_file}")
+        if not source_file.is_file():
+            raise ValueError(f"source path is not a file: {source_file}")
+        size_bytes = source_file.stat().st_size
+        if size_bytes <= 0:
+            raise ValueError("source file is empty")
+        if size_bytes > self.MAX_INGEST_BYTES:
+            raise ValueError(f"source file exceeds {self.MAX_INGEST_BYTES // (1024 ** 3)}GB ingest limit")
+        extension = source_file.suffix.lower()
+        if extension not in self.INGEST_VIDEO_EXTENSIONS:
+            raise ValueError(
+                f"unsupported video type {extension or '(none)'}; "
+                f"use {', '.join(self.INGEST_VIDEO_EXTENSIONS)}"
+            )
+
+        asset_id = f"video-{uuid.uuid4().hex[:12]}"
+        videos_dir = Path(self.settings.data_dir) / "videos"
+        videos_dir.mkdir(parents=True, exist_ok=True)
+        managed_path = videos_dir / f"{asset_id}.mp4"
+
+        source_sha256 = sha256_file(source_file)
+        shutil.copyfile(source_file, managed_path)
+        managed_sha256 = sha256_file(managed_path)
+        if managed_sha256 != source_sha256:
+            managed_path.unlink(missing_ok=True)
+            raise ValueError("managed copy hash mismatch — ingest aborted")
+
+        probe = probe_video_file(managed_path)
+        if not probe or float(probe.get("duration", 0) or 0) <= 0:
+            managed_path.unlink(missing_ok=True)
+            raise ValueError("file is not readable video (probe failed)")
+
+        asset = ContentAsset(
+            asset_id=asset_id,
+            tenant_id=self.settings.tenant_id,
+            topic=topic.strip() or managed_path.stem,
+            pillar=pillar or "education",
+            language=Language(language),
+            created_by="MIRA",
+            provenance=[f"external_ingest:{source_file}", f"source_sha256:{source_sha256}"],
+            media_manifest={
+                "video_path": str(managed_path),
+                "provider": "external_ingest",
+                "provider_attempts": ["external_ingest"],
+                "duration": float(probe["duration"]),
+                "resolution": resolution_label(int(probe["width"]), int(probe["height"])),
+                "scenes": 1,
+                "chapters": [],
+                "source_path": str(source_file),
+                "source_sha256": source_sha256,
+                "managed_sha256": managed_sha256,
+                "size_bytes": int(probe["size_bytes"]),
+                "ffprobe": probe,
+            },
+            metadata={
+                "title": title.strip(),
+                "source": source,
+                "ingest_source": "external_file",
+                "original_filename": source_file.name,
+                "ingested_by": self.settings.owner_actor,
+            },
+        )
+        # Walk the sanctioned chain rather than jumping the state machine.
+        asset.transition(AssetStatus.RESEARCHED)
+        asset.transition(AssetStatus.SCRIPTED)
+        asset.transition(AssetStatus.FACT_CHECKED)
+        asset.transition(AssetStatus.PRODUCED)
+        asset.transition(AssetStatus.AWAITING_OWNER)
+
+        seo = self._draft_seo_metadata(asset, title)
+        if seo is not None:
+            asset.media_manifest["seo_metadata"] = seo
+
+        # Informative only: the hard gate stays at owner approval, which re-runs
+        # the same check and refuses to pass on any issue.
+        check = self.quality_gates.check_media_asset(asset, str(managed_path), "video")
+        asset.quality_score, asset.quality_issues = check.score, check.issues
+
+        self.assets[asset.asset_id] = asset
+        self.store.save_asset(asset)
+        self.ledger.append("external_video_ingested", {
+            "asset_id": asset.asset_id,
+            "source_path": str(source_file),
+            "source_sha256": source_sha256,
+            "managed_path": str(managed_path),
+            "managed_sha256": managed_sha256,
+            "size_bytes": int(probe["size_bytes"]),
+            "duration": float(probe["duration"]),
+            "resolution": asset.media_manifest["resolution"],
+            "quality_score": check.score,
+            "quality_passed": check.passed,
+        }, asset.tenant_id, "MIRA")
+        return asset
+
+    def _draft_seo_metadata(self, asset: ContentAsset, title: str = "") -> dict[str, Any] | None:
+        """Best-effort SEO draft. Pure function, no credentials, never raises."""
+        try:
+            seo = YouTubeUploadService.generate_seo_metadata(
+                content_type="video",
+                topic=title.strip() or asset.topic,
+                pillar=asset.pillar,
+                language=asset.language.value,
+            )
+        except Exception:
+            return None
+        if title.strip():
+            seo["title"] = title.strip()[:100]
+        return seo
+
+    def _resolve_seo_metadata(self, asset: ContentAsset) -> dict[str, Any]:
+        """The metadata to upload with: owner-edited draft if present, else a fresh draft."""
+        stored = asset.media_manifest.get("seo_metadata")
+        if isinstance(stored, dict) and str(stored.get("title") or "").strip():
+            tags = stored.get("tags") or []
+            return {
+                "title": str(stored["title"])[:100],
+                "description": str(stored.get("description") or "")[:5000],
+                "tags": [str(tag) for tag in tags][:30],
+                "category_id": str(stored.get("category_id") or "27"),
+            }
+        return YouTubeUploadService.generate_seo_metadata(
+            content_type="video",
+            topic=str(asset.metadata.get("title") or asset.topic),
+            pillar=asset.pillar,
+            language=asset.language.value,
+        )
+
+    def update_seo_metadata(self, asset_id: str, title: str = "", description: str = "",
+                            tags: list[str] | None = None) -> dict[str, Any]:
+        """Merge owner edits into ``media_manifest['seo_metadata']``."""
+        asset = self.get_asset(asset_id)
+        seo = dict(asset.media_manifest.get("seo_metadata") or {})
+        if title.strip():
+            seo["title"] = title.strip()[:100]
+        if description.strip():
+            seo["description"] = description.strip()[:5000]
+        if tags is not None:
+            seo["tags"] = [str(tag).strip() for tag in tags if str(tag).strip()][:30]
+        seo.setdefault("category_id", "27")
+        asset.media_manifest["seo_metadata"] = seo
+        self.store.save_asset(asset)
+        self.ledger.append("seo_metadata_updated", {
+            "asset_id": asset_id,
+            "title": seo.get("title", ""),
+            "tag_count": len(seo.get("tags") or []),
+        }, asset.tenant_id, "LEO")
+        return {"asset_id": asset_id, "seo_metadata": seo}
+
+    def upload_unlisted(self, asset_id: str, approver: str | None = None) -> dict[str, Any]:
+        """Upload an owner-approved asset to YouTube as **unlisted**.
+
+        Owner approval, the approval record and the weekly cap are all enforced
+        here — this is where the 1600-unit ``videos.insert`` quota is spent.
+        Any failure leaves the asset ``approved`` and is ledgered; there is no
+        path from this method to a public video.
+        """
+        asset = self.get_asset(asset_id)
+        self.governance.assert_publishable(asset, "youtube", self.queue.get_weekly_count("video"))
+
+        video_path = Path(str(asset.media_manifest.get("video_path") or ""))
+        if not video_path.is_file() or video_path.stat().st_size == 0:
+            raise GovernanceViolation(f"asset {asset_id} has no readable video preview")
+
+        seo = self._resolve_seo_metadata(asset)
+        try:
+            service = self._get_youtube_service()
+            result = service.upload_video(
+                video_path=video_path,
+                title=seo["title"],
+                description=seo.get("description", ""),
+                tags=list(seo.get("tags") or []),
+                category_id=seo.get("category_id", "27"),
+                privacy_status="unlisted",
+            )
+        except Exception as exc:
+            self.ledger.append("video_upload_failed", {
+                "asset_id": asset_id,
+                "error": str(exc)[:500],
+            }, asset.tenant_id, "LEO")
+            raise
+
+        asset.media_manifest["youtube_video_id"] = result["video_id"]
+        asset.media_manifest["youtube_url"] = result["video_url"]
+        asset.media_manifest["privacy_status"] = "unlisted"
+        asset.media_manifest["seo_metadata"] = seo
+        asset.transition(AssetStatus.UPLOADED_UNLISTED)
+        self.store.save_asset(asset)
+        payload = {
+            "asset_id": asset_id,
+            "youtube_video_id": result["video_id"],
+            "youtube_url": result["video_url"],
+            "privacy_status": "unlisted",
+            "approval_id": asset.approval_id,
+            "approver": approver or self.settings.owner_actor,
+            "title": seo["title"],
+        }
+        self.ledger.append("video_uploaded_unlisted", payload, asset.tenant_id, "LEO")
+        return payload
+
+    def go_public(self, asset_id: str, approver: str | None = None) -> dict[str, Any]:
+        """Flip an unlisted asset to **public** via ``videos.update``, then verify.
+
+        Owner-only and fail-closed: if the API reports anything other than
+        ``public`` after the update — the signature of Google's unverified
+        API-project lock — the asset stays ``uploaded_unlisted`` and the caller
+        is told to publish manually from YouTube Studio.
+        """
+        asset = self.get_asset(asset_id)
+        self.governance.assert_owner(approver or self.settings.owner_actor)
+        if asset.status is not AssetStatus.UPLOADED_UNLISTED:
+            raise GovernanceViolation(f"asset must be uploaded_unlisted before going public, got {asset.status}")
+        if not asset.approval_id:
+            raise GovernanceViolation("missing owner approval record")
+
+        video_id = str(asset.media_manifest.get("youtube_video_id") or "")
+        if not video_id:
+            raise GovernanceViolation("asset has no youtube_video_id to flip")
+
+        try:
+            service = self._get_youtube_service()
+            service.update_video_privacy(video_id, "public")
+            status = service.get_video_status(video_id)
+        except Exception as exc:
+            self.ledger.append("go_public_failed", {
+                "asset_id": asset_id, "video_id": video_id, "error": str(exc)[:500],
+            }, asset.tenant_id, "LEO")
+            raise GovernanceViolation(f"youtube privacy flip failed: {exc}") from exc
+
+        if str(status.get("privacy_status") or "") != "public":
+            self.ledger.append("go_public_failed", {
+                "asset_id": asset_id, "video_id": video_id,
+                "privacy_status": str(status.get("privacy_status") or ""),
+            }, asset.tenant_id, "LEO")
+            raise GovernanceViolation("youtube private-lock suspected; manual YouTube Studio publish required")
+
+        asset.media_manifest["privacy_status"] = "public"
+        asset.transition(AssetStatus.PUBLISHED)
+        self.store.save_asset(asset)
+        payload = {
+            "asset_id": asset_id,
+            "youtube_video_id": video_id,
+            "youtube_url": asset.media_manifest.get("youtube_url", ""),
+            "privacy_status": "public",
+            "approver": approver or self.settings.owner_actor,
+        }
+        self.ledger.append("video_published_public", payload, asset.tenant_id, "LEO")
+        return payload
+
+    def _granted_youtube_scopes(self) -> list[str]:
+        """Scopes actually recorded for the YouTube connection (short or full form)."""
+        record = self.connections.get("youtube") or {}
+        scopes = record.get("scopes")
+        if isinstance(scopes, list) and scopes:
+            return [str(scope) for scope in scopes]
+        token_path = Path(self.settings.data_dir) / "youtube_token.json"
+        if token_path.is_file():
+            try:
+                raw = json.loads(token_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return []
+            stored = raw.get("scopes")
+            if isinstance(stored, list):
+                return [str(scope) for scope in stored]
+        return []
+
+    def _oembed_is_public(self, video_id: str) -> dict[str, Any]:
+        """oEmbed probe: HTTP 200 means the video is publicly visible.
+
+        Used to decide whether the unverified-project private-lock applies,
+        before spending any upload quota. Never raises.
+        """
+        import requests
+
+        try:
+            response = requests.get(
+                "https://www.youtube.com/oembed",
+                params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
+                timeout=10,
+            )
+        except Exception as exc:
+            return {"ok": False, "public": None, "status_code": None, "error": str(exc)[:300]}
+        return {
+            "ok": response.status_code == 200,
+            "public": response.status_code == 200,
+            "status_code": response.status_code,
+        }
+
+    @staticmethod
+    def _preflight_file(path: Path) -> dict[str, Any]:
+        """Integrity evidence for a candidate file: size, SHA-256, ffprobe."""
+        try:
+            if not path.is_file():
+                return {"exists": False, "size_bytes": 0, "sha256": None, "ffprobe": None}
+            return {
+                "exists": True,
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+                "ffprobe": probe_video_file(path),
+            }
+        except OSError as exc:
+            return {"exists": False, "size_bytes": 0, "sha256": None, "ffprobe": None, "error": str(exc)}
+
+    def preflight_youtube_publish(self, video_path: Path | None = None,
+                                  reference_video_id: str = YOUTUBE_REFERENCE_VIDEO_ID) -> dict[str, Any]:
+        """Read-only readiness check before an upload spends quota.
+
+        Reports: (a) token validity via ``channels.list``; (b) whether the
+        granted scopes include ``youtube.force-ssl`` (required for the flip);
+        (c) whether the reference video is publicly visible, which tells us if
+        the unverified-project private-lock applies; (d) quota arithmetic; and
+        (e) file integrity when a path is supplied.
+        """
+        report: dict[str, Any] = {
+            "checked_at": now_iso(),
+            "video_path": str(video_path) if video_path is not None else None,
+            "reference_video_id": reference_video_id,
+            "youtube_upload_enabled": bool(self.settings.youtube_upload_enabled),
+            "quota": {
+                "videos_insert_units": self.VIDEOS_INSERT_QUOTA_UNITS,
+                "default_daily_units": self.YOUTUBE_DAILY_QUOTA_UNITS,
+                "uploads_per_day": self.YOUTUBE_DAILY_QUOTA_UNITS // self.VIDEOS_INSERT_QUOTA_UNITS,
+            },
+        }
+
+        channel: dict[str, Any] = {"ok": False, "error": "youtube upload not enabled"}
+        if self.settings.youtube_upload_enabled:
+            try:
+                channel = self._get_youtube_service().check_channel_access()
+            except Exception as exc:
+                channel = {"ok": False, "error": str(exc)[:300]}
+        report["channel_access"] = channel
+
+        granted = self._granted_youtube_scopes()
+        report["granted_scopes"] = granted
+        report["force_ssl_scope_granted"] = any(
+            scope in (self.FORCE_SSL_SCOPE, self.FORCE_SSL_SCOPE_SHORT) for scope in granted
+        )
+
+        report["reference_video"] = self._oembed_is_public(reference_video_id)
+        report["reference_video_public"] = report["reference_video"].get("public")
+
+        if video_path is not None:
+            report["file"] = self._preflight_file(Path(video_path))
+
+        report["ok"] = bool(channel.get("ok")) and bool(report["force_ssl_scope_granted"])
+        return report
 
     def generate_podcast(self, topic: str, script: str, host_voice: str = "en-US-AriaNeural",
                          guest_voice: str | None = None, duration_seconds: int = 1800,

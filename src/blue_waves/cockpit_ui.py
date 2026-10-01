@@ -64,6 +64,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
            border:1px solid var(--border); }
   .badge.awaiting_owner,.badge.ready_to_publish { background:var(--amber); color:#000; }
   .badge.approved { background:var(--green); color:#000; }
+  .badge.uploaded_unlisted { background:var(--purple); color:#000; }
   .badge.published { background:var(--accent); color:#000; }
   .badge.rejected { background:var(--red); color:#000; }
   .badge.composing,.badge.mixing,.badge.queued,.badge.scripted { background:var(--purple); color:#000; }
@@ -130,6 +131,7 @@ function badgeClass(s){ return esc(s || ''); }
 
 const NAV = [
   ['overview','Overview'], ['library','Media Library'], ['approvals','Approvals'],
+  ['publish','YouTube Publish'],
   ['crew','Crew & Tasks'], ['generate','Generate'], ['finance','Finance Plan'],
   ['shepo','SHEPO Finance'], ['meta','Metacognition'], ['providers','Providers & Keys'], ['scheduler','Scheduler'],
   ['monetization','Monetization']
@@ -269,6 +271,7 @@ LOADERS.library = async function(){
 };
 async function action(type,id,path,payload){
   try{ const r = await api('/api/'+path+'/'+type+'/'+id, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload||{})}); toast(r); } catch(e){ toast('Error: '+e.message); }
+  if (window._cur === 'publish') { LOADERS.publish(); return; }
   LOADERS.library(); LOADERS.approvals();
 }
 async function doApprove(a){ await action(a.dataset.type,a.dataset.id,'approve',{}); }
@@ -382,6 +385,20 @@ LOADERS.generate = async function(){
         <label>Lyrics (optional)</label><textarea id="u-m-lyrics" rows="2"></textarea>
         <button class="btn" onclick="uploadMusic()">Upload & Queue for Review</button>
         <div id="u-m-status" class="small muted" style="margin-top:8px"></div>
+      </div>
+      <div class="card"><h2>Ingest External Video</h2>
+        <p class="muted small">Bring in a video produced elsewhere. It is hashed, copied into the app's own storage, probe-checked and queued for your review — the same owner gate as generated work. Upload to YouTube unlisted, review the real embed, then publish.</p>
+        <label>File path on this machine</label><input id="i-v-path" placeholder="E:\\path\\to\\video.mp4">
+        <label>Topic</label><input id="i-v-topic" placeholder="e.g. Helix Codex framework explainer">
+        <label>Title (optional — overrides the SEO draft)</label><input id="i-v-title" placeholder="e.g. Helix Codex in 6 minutes">
+        <div class="row">
+          <div style="flex:1"><label>Pillar</label><select id="i-v-pillar"><option>education</option><option selected>tech</option><option>science</option><option>business</option></select></div>
+          <div style="flex:1"><label>Language</label><select id="i-v-lang"><option value="en" selected>English</option><option value="ar">Arabic</option></select></div>
+        </div>
+        <label>Source</label><select id="i-v-source"><option value="external_file">External file</option><option value="owner_produced">Owner produced</option><option value="client_supplied">Client supplied</option></select>
+        <p class="muted small">Accepts mp4, mov, webm, mkv up to 2 GB. The original is never modified.</p>
+        <button class="btn" onclick="ingestVideo()">Ingest &amp; Queue for Review</button>
+        <div id="i-v-status" class="small muted" style="margin-top:8px"></div>
       </div>
       <div class="card"><h2>Generate Podcast</h2>
         <label>Topic</label><input id="g-p-topic" placeholder="e.g. The science of sleep">
@@ -513,6 +530,145 @@ async function uploadMusic(){
 function val(id){return document.getElementById(id).value.trim();}
 function sel(id){return document.getElementById(id).value;}
 
+// ---------- YouTube Publish (ingest → unlisted → review → public) ----------
+async function ingestVideo(){
+  const st = document.getElementById('i-v-status');
+  const path = val('i-v-path');
+  if (!path) { toast('Enter the path to a video file on this machine'); return; }
+  st.textContent = 'Hashing and copying into app storage…';
+  try {
+    const r = await api('/api/ingest/video', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({path, topic:val('i-v-topic'), title:val('i-v-title'),
+        pillar:sel('i-v-pillar'), language:sel('i-v-lang'), source:sel('i-v-source')})});
+    if (r.error) throw new Error(r.error);
+    st.textContent = '';
+    toast('Ingested ' + r.asset_id + ' (' + r.media_manifest.resolution + ', ' +
+      Math.round(r.media_manifest.duration) + 's) — review it under Approvals, then publish it.');
+    showSection('publish');
+  } catch(e){ st.textContent = ''; toast('Ingest error: '+e.message); }
+}
+async function runPreflight(){
+  const el = document.getElementById('yt-preflight');
+  if (el) el.textContent = 'Running preflight…';
+  try {
+    const r = await api('/api/preflight/youtube');
+    if (el) el.textContent = JSON.stringify(r, null, 2);
+    toast('Preflight complete');
+  } catch(e){ if (el) el.textContent = ''; toast('Preflight error: '+e.message); }
+}
+async function startYoutubeOauth(){
+  try {
+    const r = await api('/api/youtube/oauth/start');
+    if (r.error) throw new Error(r.error);
+    window.open(r.authorization_url, '_blank');
+    toast('Consent opened in a new tab. Approve all scopes, then the callback lands back here.');
+  } catch(e){ toast('OAuth error: '+e.message); }
+}
+async function saveReviewMetadata(id){
+  try {
+    const r = await api('/api/review/'+id+'/metadata', {method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title:val('rv-title-'+id), description:val('rv-desc-'+id), tags:val('rv-tags-'+id)})});
+    if (r.error) throw new Error(r.error);
+    toast('Metadata saved');
+    LOADERS.publish();
+  } catch(e){ toast('Save error: '+e.message); }
+}
+async function uploadUnlisted(id){
+  if (!confirm('Upload this video to YouTube as UNLISTED? This spends 1600 of your 10000 daily API quota units.')) return;
+  toast('Uploading to YouTube (unlisted) — this can take a while for large files…');
+  try {
+    const r = await api('/api/upload-unlisted/'+id, {method:'POST'});
+    if (r.error) throw new Error(r.error);
+    toast('Uploaded unlisted: '+r.youtube_url);
+    LOADERS.publish();
+  } catch(e){ toast('Upload error: '+e.message); }
+}
+async function goPublic(id){
+  if (!confirm('Publish this video PUBLICLY on YouTube?\\n\\nThis is irreversible from here — going public exposes the video to everyone. Only continue after you have watched the unlisted embed above.')) return;
+  try {
+    const r = await api('/api/go-public/'+id, {method:'POST'});
+    if (r.error) throw new Error(r.error);
+    toast('Now public: '+r.youtube_url);
+    LOADERS.publish();
+  } catch(e){
+    toast('Publish blocked: '+e.message+
+      '\\n\\nIf this says "private-lock", open YouTube Studio and switch the video to Public manually — the metadata is already applied.');
+    LOADERS.publish();
+  }
+}
+LOADERS.publish = async function(){
+  const data = await api('/api/library');
+  const videos = (data.items||[]).filter(i=>i.content_type==='video');
+  const reviewable = videos.filter(i=>i.status==='uploaded_unlisted');
+  const ready = videos.filter(i=>i.status==='approved');
+  const published = videos.filter(i=>i.status==='published');
+  const reviews = [];
+  for (const item of reviewable){ reviews.push(await api('/api/review/'+item.asset_id)); }
+  document.getElementById('sections').innerHTML = `
+    <div class="card wide-card">
+      <h2>YouTube Publish <span class="count">${reviewable.length}</span></h2>
+      <p class="muted small">Ingest → upload unlisted → watch the real embed → edit metadata → go public. The agent can ingest and upload unlisted; only you can approve and publish.</p>
+      ${reviewable.length===0?'<p class="muted small">Nothing awaiting review. Ingest a video under Generate, approve it under Approvals, then upload it unlisted below.</p>':''}
+      ${reviews.map(r=>`
+        <div class="library-item" data-id="${esc(r.asset_id)}">
+          <div class="head">
+            <span class="badge">video</span>
+            <span class="title">${esc(r.topic)}</span>
+            <span class="badge ${badgeClass(r.status)}">${esc(r.status)}</span>
+            <span class="pill">${esc(r.resolution||'')} · ${Math.round(r.duration||0)}s</span>
+            <span class="pill" title="unlisted video id">${esc(r.youtube_video_id||'')}</span>
+            <div style="margin-left:auto" class="small muted">${esc(r.source_path||'')}</div>
+          </div>
+          <div class="player-wrap">${playerHTML({content_type:'video', media_url:r.media_url, media_exists:r.media_exists})}</div>
+          ${r.youtube_embed_url?`<div class="player-wrap" style="background:#000">
+            <iframe width="100%" height="320" src="${esc(r.youtube_embed_url)}" title="Unlisted preview"
+              frameborder="0" allow="accelerometer; clipboard-write; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+          </div>
+          <div class="meta">Unlisted embed — this is exactly what a viewer with the link sees.
+            <a href="${esc(r.youtube_url||'#')}" target="_blank" rel="noopener">Open on YouTube</a></div>`:''}
+          <div class="meta">
+            <label>Title (max 100)</label>
+            <input id="rv-title-${esc(r.asset_id)}" value="${esc(r.seo_metadata.title||'')}">
+            <label>Description</label>
+            <textarea id="rv-desc-${esc(r.asset_id)}" rows="5">${esc(r.seo_metadata.description||'')}</textarea>
+            <label>Tags (comma separated)</label>
+            <input id="rv-tags-${esc(r.asset_id)}" value="${esc((r.seo_metadata.tags||[]).join(', '))}">
+            <button class="btn gray sm" onclick="saveReviewMetadata('${esc(r.asset_id)}')">Save metadata</button>
+          </div>
+          <div class="actions" data-id="${esc(r.asset_id)}">
+            <button class="btn green sm" onclick="goPublic('${esc(r.asset_id)}')">Go Public</button>
+            <button class="btn red sm act-reject" data-type="video">Reject</button>
+            <span class="small muted">Going public is irreversible from here.</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="card wide-card" style="margin-top:16px">
+      <h2>Approved, not yet uploaded <span class="count">${ready.length}</span></h2>
+      ${ready.length===0?'<p class="muted small">No approved videos waiting on an unlisted upload.</p>':ready.map(item=>`
+        <div class="library-item">
+          <div class="head">
+            <span class="badge">video</span>
+            <span class="title">${esc(item.title||item.topic||item.asset_id)}</span>
+            <span class="badge ${badgeClass(item.status)}">${esc(item.status)}</span>
+            <span class="pill">${esc((item.media_manifest||{}).resolution||'')}</span>
+          </div>
+          <div class="player-wrap">${playerHTML(item)}</div>
+          <div class="actions">
+            <button class="btn blue sm" onclick="uploadUnlisted('${esc(item.asset_id)}')">Upload unlisted</button>
+            <span class="small muted">1600 quota units · the video stays unlisted until you say otherwise.</span>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${published.length?`<div class="card wide-card" style="margin-top:16px">
+      <h2>Published <span class="count">${published.length}</span></h2>
+      <table><tr><th>Asset</th><th>Topic</th><th>YouTube</th></tr>
+        ${published.map(item=>`<tr><td>${esc(item.asset_id)}</td><td>${esc(item.topic)}</td>
+          <td>${(item.media_manifest||{}).youtube_url?`<a href="${esc(item.media_manifest.youtube_url)}" target="_blank" rel="noopener">${esc(item.media_manifest.youtube_video_id||'')}</a>`:'-'}</td></tr>`).join('')}
+      </table>
+    </div>`:''}`;
+  document.querySelectorAll('.act-reject').forEach(b=>b.onclick=()=>doReject(b.closest('.actions')));
+};
+
 // ---------- Finance Plan ----------
 LOADERS.finance = async function(){
   const fin = await api('/api/finance/plan');
@@ -610,6 +766,14 @@ LOADERS.providers = async function(){
             </tr>`).join('')}
         </table>
         <p class="small muted" style="margin-top:8px">Approving a provider lets the system route generation to it. Credentials are encrypted at rest with BLUE_WAVES_MASTER_PASSWORD.</p>
+      </div>
+      <div class="card"><h2>YouTube Connection</h2>
+        <p class="small muted">Publishing needs the <code>youtube.force-ssl</code> scope — it is what lets the system flip a video from unlisted to public. Re-authorize once to grant it; consent is yours to give, in the browser.</p>
+        <div class="stat"><span class="k">Status</span><span class="v ${conn&&conn.youtube&&conn.youtube.connected?'ok':'warn'}">${conn&&conn.youtube&&conn.youtube.connected?'connected':'not connected'}</span></div>
+        <div class="stat"><span class="k">Recorded scopes</span><span class="v small">${esc(((conn&&conn.youtube&&conn.youtube.scopes)||[]).join(', ')||'—')}</span></div>
+        <button class="btn" onclick="startYoutubeOauth()">Re-authorize YouTube (grant force-ssl)</button>
+        <button class="btn gray" onclick="runPreflight()">Run preflight</button>
+        <pre id="yt-preflight" class="small muted" style="white-space:pre-wrap;max-height:260px;overflow:auto;margin-top:8px"></pre>
       </div>
       <div class="card"><h2>API Keys</h2>
         <p class="small muted">Secrets are encrypted at rest and are never shown again after saving. Screenshot nothing.</p>

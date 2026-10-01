@@ -19,6 +19,7 @@ class AssetStatus(StrEnum):
     PRODUCED = "produced"
     AWAITING_OWNER = "awaiting_owner"
     APPROVED = "approved"
+    UPLOADED_UNLISTED = "uploaded_unlisted"
     PUBLISHED = "published"
     REJECTED = "rejected"
     QUEUED = "queued"
@@ -128,7 +129,8 @@ class ContentAsset:
             AssetStatus.FACT_CHECKED: {AssetStatus.PRODUCED, AssetStatus.REJECTED},
             AssetStatus.PRODUCED: {AssetStatus.AWAITING_OWNER, AssetStatus.REJECTED},
             AssetStatus.AWAITING_OWNER: {AssetStatus.APPROVED, AssetStatus.REJECTED},
-            AssetStatus.APPROVED: {AssetStatus.PUBLISHED, AssetStatus.REJECTED},
+            AssetStatus.APPROVED: {AssetStatus.PUBLISHED, AssetStatus.UPLOADED_UNLISTED, AssetStatus.REJECTED},
+            AssetStatus.UPLOADED_UNLISTED: {AssetStatus.PUBLISHED, AssetStatus.REJECTED},
             AssetStatus.PUBLISHED: set(),
             AssetStatus.REJECTED: set(),
         }

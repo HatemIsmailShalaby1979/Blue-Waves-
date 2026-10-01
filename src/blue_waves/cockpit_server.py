@@ -421,6 +421,134 @@ class CockpitApp:
             "editor_available": bool(getattr(self._app.video_engine, "_video_use_editor", None)),
         }
 
+    # ------------------------------------------------------------------ #
+    # External video ingest → unlisted review → public                   #
+    # ------------------------------------------------------------------ #
+
+    #: Video containers the ingest route will accept, mirroring the app layer.
+    INGEST_VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", ".mkv")
+
+    def ingest_video(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Ingest a video by filesystem path.
+
+        Multipart would mean pushing 90 MB through stdlib ``http.server``; the
+        file is already on this machine, so the route takes a path and the
+        resolved path is ledgered by the application layer. Guards mirror the
+        application-level allowlist so a bad request fails before any copy.
+        """
+        raw_path = str(data.get("path") or "").strip()
+        if not raw_path:
+            return {"error": "path is required"}
+        source = Path(raw_path).expanduser()
+        if not source.is_absolute():
+            source = (Path.cwd() / source).resolve()
+        if not source.exists():
+            return {"error": f"source file not found: {source}"}
+        if not source.is_file():
+            return {"error": f"source path is not a file: {source}"}
+        if source.suffix.lower() not in self.INGEST_VIDEO_EXTENSIONS:
+            return {"error": f"unsupported video type {source.suffix.lower() or '(none)'}; "
+                             f"use {', '.join(self.INGEST_VIDEO_EXTENSIONS)}"}
+        try:
+            asset = self._app.ingest_external_video(
+                source_path=source,
+                topic=str(data.get("topic") or "").strip() or source.stem,
+                title=str(data.get("title") or "").strip(),
+                pillar=str(data.get("pillar") or "education"),
+                language=str(data.get("language") or "en"),
+                source=str(data.get("source") or "external_file"),
+            )
+        except (ValueError, KeyError) as exc:
+            return {"error": str(exc)}
+        except Exception as exc:
+            return {"error": f"ingest failed: {exc}"}
+        payload = asset.to_dict()
+        payload["content_type"] = "video"
+        payload["resolved_path"] = str(source)
+        return payload
+
+    def get_review(self, asset_id: str) -> dict[str, Any]:
+        """Review payload for an ingested video: media, embed, SEO, privacy."""
+        asset = self._app.assets.get(asset_id)
+        if asset is None:
+            return {"error": f"unknown video asset: {asset_id}"}
+        manifest = asset.media_manifest
+        video_id = manifest.get("youtube_video_id")
+        return {
+            "asset_id": asset_id,
+            "content_type": "video",
+            "topic": asset.topic,
+            "status": asset.status.value,
+            "approval_id": asset.approval_id,
+            "provider": manifest.get("provider"),
+            "media_url": f"/media/video/{asset_id}",
+            "media_exists": self._media_exists(manifest.get("video_path")),
+            "duration": manifest.get("duration"),
+            "resolution": manifest.get("resolution"),
+            "size_bytes": manifest.get("size_bytes"),
+            "source_path": manifest.get("source_path"),
+            "source_sha256": manifest.get("source_sha256"),
+            "managed_sha256": manifest.get("managed_sha256"),
+            "quality_score": asset.quality_score,
+            "quality_issues": asset.quality_issues,
+            "seo_metadata": manifest.get("seo_metadata") or {},
+            "youtube_video_id": video_id,
+            "youtube_url": manifest.get("youtube_url"),
+            "youtube_embed_url": f"https://www.youtube.com/embed/{video_id}" if video_id else None,
+            "privacy_status": manifest.get("privacy_status"),
+            "can_go_public": asset.status.value == "uploaded_unlisted" and bool(video_id),
+        }
+
+    def save_review_metadata(self, asset_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        try:
+            tags = data.get("tags")
+            if isinstance(tags, str):
+                tags = [tag.strip() for tag in tags.split(",") if tag.strip()]
+            return self._app.update_seo_metadata(
+                asset_id,
+                title=str(data.get("title") or ""),
+                description=str(data.get("description") or ""),
+                tags=[str(tag) for tag in tags] if isinstance(tags, list) else None,
+            )
+        except KeyError as exc:
+            return {"error": str(exc)}
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def upload_unlisted(self, asset_id: str) -> dict[str, Any]:
+        """Owner action: spend the upload quota and park the video as unlisted."""
+        try:
+            return self._app.upload_unlisted(asset_id, approver=self._app.settings.owner_actor)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def go_public(self, asset_id: str) -> dict[str, Any]:
+        """Owner action: flip the unlisted video to public. Irreversible."""
+        try:
+            return self._app.go_public(asset_id, approver=self._app.settings.owner_actor)
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def preflight_youtube(self) -> dict[str, Any]:
+        try:
+            return self._app.preflight_youtube_publish()
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def youtube_oauth_start(self) -> dict[str, Any]:
+        """Return the consent URL for the YouTube connection (scope re-auth)."""
+        redirect_uri = (f"{self._app.settings.cockpit_public_base_url}"
+                        if self._app.settings.cockpit_public_base_url
+                        else f"http://{self._app.settings.cockpit_host}:{self._app.settings.cockpit_port}")
+        try:
+            return {"authorization_url": self._app.youtube_oauth_start(f"{redirect_uri}/oauth/youtube/callback"),
+                    "redirect_uri": f"{redirect_uri}/oauth/youtube/callback"}
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def youtube_oauth_callback(self, code: str, state: str) -> dict[str, Any]:
+        return self._app.youtube_oauth_callback(code, state)
+
     def trigger_video_use_edit(self, asset_id: str) -> dict[str, Any]:
         """Manually trigger video-use post-production for a video asset."""
         try:
@@ -555,6 +683,26 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
                 self.serve_json(self.cockpit.get_video_job(parts[3]))
             else:
                 self.send_error(400)
+        elif path.startswith("/api/review/"):
+            parts = path.split("/")
+            if len(parts) >= 4 and parts[3]:
+                self.serve_json(self.cockpit.get_review(parts[3]))
+            else:
+                self.send_error(400)
+        elif path == "/api/preflight/youtube":
+            self.serve_json(self.cockpit.preflight_youtube())
+        elif path == "/api/youtube/oauth/start":
+            self.serve_json(self.cockpit.youtube_oauth_start())
+        elif path == "/oauth/youtube/callback":
+            query = parse_qs(parsed.query)
+            try:
+                result = self.cockpit.youtube_oauth_callback(
+                    (query.get("code", [""])[0] or ""), (query.get("state", [""])[0] or ""))
+                self.serve_json(result)
+            except ValueError as exc:
+                self._json_err(400, {"error": str(exc)})
+            except Exception as exc:
+                self._json_err(500, {"error": f"OAuth callback failed: {exc}"})
         elif path.startswith("/media/"):
             self.serve_media(path)
         else:
@@ -691,6 +839,38 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
         elif path == "/api/upload/music":
             ctype = self.headers.get("Content-Type", "")
             self.serve_json(self.cockpit.upload_music(ctype, body))
+        elif path == "/api/ingest/video":
+            try:
+                data = json.loads(body) if body else {}
+                if not isinstance(data, dict):
+                    raise TypeError("JSON body must be an object")
+                self.serve_json(self.cockpit.ingest_video(data))
+            except (json.JSONDecodeError, TypeError):
+                self.send_error(400)
+        elif path.startswith("/api/review/") and path.endswith("/metadata"):
+            parts = path.split("/")
+            if len(parts) >= 5 and parts[3]:
+                try:
+                    data = json.loads(body) if body else {}
+                    if not isinstance(data, dict):
+                        raise TypeError("JSON body must be an object")
+                    self.serve_json(self.cockpit.save_review_metadata(parts[3], data))
+                except (json.JSONDecodeError, TypeError):
+                    self.send_error(400)
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/upload-unlisted/"):
+            parts = path.split("/")
+            if len(parts) >= 4 and parts[3]:
+                self.serve_json(self.cockpit.upload_unlisted(parts[3]))
+            else:
+                self.send_error(400)
+        elif path.startswith("/api/go-public/"):
+            parts = path.split("/")
+            if len(parts) >= 4 and parts[3]:
+                self.serve_json(self.cockpit.go_public(parts[3]))
+            else:
+                self.send_error(400)
         else:
             self.send_error(404)
 

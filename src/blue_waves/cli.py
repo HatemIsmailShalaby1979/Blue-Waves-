@@ -25,6 +25,8 @@ def build_parser() -> argparse.ArgumentParser:
     cockpit = sub.add_parser("cockpit", help="start the Cockpit web UI")
     cockpit.add_argument("--host", default=None, help="host to bind to (default: from settings)")
     cockpit.add_argument("--port", type=int, default=None, help="port to listen on (default: from settings)")
+    preflight = sub.add_parser("preflight", help="read-only readiness check before spending YouTube upload quota")
+    preflight.add_argument("--video", default=None, help="optional video file to hash and probe as part of the check")
     return parser
 
 
@@ -70,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
             port = args.port or app.settings.cockpit_port
             start_cockpit(app, host=host, port=port)
             return 0
+        elif args.command == "preflight":
+            from pathlib import Path
+            video = Path(args.video) if args.video else None
+            result = app.preflight_youtube_publish(video)
         else:
             result = run_demo(app, args.topic, args.source_url, args.source_verified)
     except (GovernanceViolation, RuntimeError, ValueError) as exc:

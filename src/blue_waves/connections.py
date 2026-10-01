@@ -25,6 +25,24 @@ ALLOWED_TOKEN_HOSTS = {
     "accounts.google.com",
 }
 
+#: Scopes requested for the YouTube connection, and the set a completed
+#: authorization is validated against.
+#:
+#: ``youtube.force-ssl`` is what ``videos.update`` (privacy flip) requires; it is
+#: requested up front so a single consent covers upload, analytics and publish.
+YOUTUBE_SCOPES: tuple[str, ...] = (
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
+)
+
+#: Short names (as recorded on the connection record) for the same scopes.
+YOUTUBE_SCOPE_NAMES: tuple[str, ...] = (
+    "youtube.upload",
+    "yt-analytics.readonly",
+    "youtube.force-ssl",
+)
+
 def _validate_token_url(url: str) -> None:
     """Validate URL to prevent SSRF for OAuth token endpoint."""
     import urllib.parse
@@ -132,7 +150,7 @@ class ConnectionStore:
         state = secrets.token_urlsafe(24)
         self.save("youtube", {"oauth_state": state, "redirect_uri": redirect_uri})
         query = urllib.parse.urlencode({"client_id": config["client_id"], "redirect_uri": redirect_uri,
-                                         "response_type": "code", "scope": "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/yt-analytics.readonly",
+                                         "response_type": "code", "scope": " ".join(YOUTUBE_SCOPES),
                                          "access_type": "offline", "prompt": "consent", "state": state})
         return "https://accounts.google.com/o/oauth2/v2/auth?" + query
 
@@ -147,8 +165,12 @@ class ConnectionStore:
         request = urllib.request.Request(token_url, data=payload, method="POST")
         with urllib.request.urlopen(request, timeout=15) as response:
             token = json.loads(response.read().decode())
+        # Record what Google actually granted when it says so; otherwise assume
+        # the requested set was granted, so the record never under-reports.
+        granted = token.get("scope")
+        scopes = [str(s) for s in granted.split()] if isinstance(granted, str) and granted.strip() else list(YOUTUBE_SCOPE_NAMES)
         return self.save("youtube", {"access_token": token.get("access_token"), "refresh_token": token.get("refresh_token"),
-                                      "scopes": ["youtube.upload", "yt-analytics.readonly"], "account": "authorized YouTube account", "oauth_state": None})
+                                      "scopes": scopes, "account": "authorized YouTube account", "oauth_state": None})
 
 
 def _make_cipher_or_none(root: Path) -> SecretCipher | None:

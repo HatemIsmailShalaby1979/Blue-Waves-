@@ -17,7 +17,11 @@ from googleapiclient.http import MediaFileUpload
 class YouTubeUploadService:
     """YouTube Data API v3 upload service with OAuth 2.0."""
 
-    SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/yt-analytics.readonly"]
+    SCOPES = [
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/yt-analytics.readonly",
+        "https://www.googleapis.com/auth/youtube.force-ssl",
+    ]
 
     # Category IDs: 27=Education, 28=Science & Technology, 24=Entertainment
     DEFAULT_CATEGORY = "27"
@@ -217,6 +221,64 @@ class YouTubeUploadService:
                 rendered.unlink()
             except FileNotFoundError:
                 pass
+
+    def update_video_privacy(self, video_id: str, privacy_status: str) -> dict[str, Any]:
+        """Change a video's privacy status via ``videos.update``.
+
+        Requires the ``youtube.force-ssl`` scope. Returns the effective status
+        as reported by the API in the update response.
+        """
+        service = self._get_service()
+        response = service.videos().update(
+            part="status",
+            body={"id": video_id, "status": {"privacyStatus": privacy_status}},
+        ).execute()
+        status = response.get("status") or {}
+        return {
+            "video_id": response.get("id", video_id),
+            "privacy_status": status.get("privacyStatus", ""),
+        }
+
+    def get_video_status(self, video_id: str) -> dict[str, Any]:
+        """Read a video's status (``videos.list``); ``found`` is False when absent."""
+        service = self._get_service()
+        response = service.videos().list(part="status", id=video_id).execute()
+        items = response.get("items") or []
+        if not items:
+            return {"video_id": video_id, "found": False, "privacy_status": "", "upload_status": ""}
+        status = items[0].get("status") or {}
+        return {
+            "video_id": video_id,
+            "found": True,
+            "privacy_status": status.get("privacyStatus", ""),
+            "upload_status": status.get("uploadStatus", ""),
+        }
+
+    def check_channel_access(self) -> dict[str, Any]:
+        """Verify the saved token still resolves to a channel (1 quota unit).
+
+        Never raises: a dead token or missing scope comes back as
+        ``{"ok": False, "error": ...}`` so preflight can report it.
+        """
+        try:
+            service = self._get_service()
+            response = service.channels().list(mine=True, part="snippet").execute()
+            items = response.get("items") or []
+            if not items:
+                return {"ok": False, "error": "no channel returned for the authorized account"}
+            snippet = items[0].get("snippet") or {}
+            return {"ok": True, "channel_id": items[0].get("id", ""), "title": snippet.get("title", "")}
+        except Exception as exc:  # noqa: BLE001 - preflight must report, never raise
+            return {"ok": False, "error": str(exc)}
+
+    def granted_scopes(self) -> list[str]:
+        """Return the scopes recorded on the stored token file, or ``[]``."""
+        try:
+            raw = json.loads(self.credentials_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        scopes = raw.get("scopes")
+        return [str(scope) for scope in scopes] if isinstance(scopes, list) else []
 
     def set_thumbnail(self, video_id: str, thumbnail_path: Path) -> bool:
         """Set custom thumbnail for video."""
