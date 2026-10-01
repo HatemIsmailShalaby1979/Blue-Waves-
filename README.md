@@ -5,7 +5,8 @@
 **A multi-format content studio and the first commercial vertical on Helix Codex.**
 
 ![Status](https://img.shields.io/badge/status-pre--revenue-yellow)
-![Tests](https://img.shields.io/badge/tests-125%20collected-2ea043)
+![Pylint](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions/workflows/pylint.yml/badge.svg)
+![Python application](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions/workflows/python-app.yml/badge.svg)
 ![Licence](https://img.shields.io/badge/licence-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.12%2B-3776ab)
 
@@ -69,6 +70,7 @@ original date.
 | Evidence | Value | Snapshot |
 |---|---|---|
 | Tests | 163 collected (147 project + 16 vendored); 147 project tests pass; one cockpit E2E test intermittently order-dependent | 2026-10-01 |
+| CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
@@ -77,7 +79,7 @@ original date.
 | Version | v0.3.0 (`pyproject.toml`, `src/blue_waves/__init__.py`) | 2026-10-01 |
 
 > [!WARNING]
-> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner.
+> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. GitHub Actions CI is **red** on `main` — both workflows fail at their lint steps and the test step is skipped; the badges above are live and show that state.
 
 ## Run it
 
