@@ -195,8 +195,16 @@ def _table_lookup(tbl: np.ndarray, cycles: np.ndarray) -> np.ndarray:
     return tbl[i0] + (tbl[i1] - tbl[i0]) * frac
 
 
-def osc(freq: float, n: int, sr: int = SR, phase: float = 0.0,
-        wave: str = "sine", fm_ratio: float = 0.0, fm_index: float = 0.0) -> np.ndarray:  # pylint: disable=redefined-outer-name  # waveform-name parameter shadows the wave module
+# pylint: disable=redefined-outer-name  # waveform-name parameter shadows the wave module
+def osc(
+    freq: float,
+    n: int,
+    sr: int = SR,
+    phase: float = 0.0,
+    wave: str = "sine",
+    fm_ratio: float = 0.0,
+    fm_index: float = 0.0,
+) -> np.ndarray:
     t = np.arange(n) / sr
     # Track phase in *cycles* so the same accumulator drives both the sine
     # path and the band-limited wavetable path.

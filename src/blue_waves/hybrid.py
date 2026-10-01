@@ -56,7 +56,10 @@ class HybridRouter:
         if stage in (Stage.BILINGUAL_REVIEW, Stage.DEEP_REVIEW) and cloud_requested:
             cloud = next((candidate for candidate in self.clouds if candidate.configured), None)
             if cloud is None:
-                return Route(stage, "local", self.local.name, "cloud requested but no configured provider; preserve work locally")
+                return Route(
+                    stage, "local", self.local.name,
+                    "cloud requested but no configured provider; preserve work locally",
+                )
             if self.governance.policy.monthly_cloud_cents <= 0:
                 return Route(stage, "local", self.local.name, "cloud budget is zero; local model remains the default")
             return Route(stage, "cloud", cloud.name, "quality-critical language/reasoning escalation", 1)

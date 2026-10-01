@@ -77,7 +77,10 @@ class MetacognitiveEngine:
         provider = top["provider"] if top else "local-first"
         return {
             "agent": "SHIPO",
-            "strategy": "Owner-approved reinvestment only; preserve the winning format and provider until new evidence contradicts it.",
+            "strategy": (
+                "Owner-approved reinvestment only; preserve the winning format and provider "
+                "until new evidence contradicts it."
+            ),
             "viral_topic_suggestions": [
                 f"A practical follow-up to: {topic}",
                 "A contrarian myth-vs-evidence episode in the strongest audience category",

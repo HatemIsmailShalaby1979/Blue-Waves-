@@ -23,6 +23,7 @@ secrets.json
 # Runtime logs and cockpit scratch output
 *.log
 output/
+blue_waves.egg-info/
 
 # Assistant tooling and project-local agent data — not source
 .claude/

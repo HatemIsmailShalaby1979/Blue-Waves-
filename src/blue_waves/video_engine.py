@@ -217,8 +217,15 @@ class VideoEngine:
                 if progress_cb:
                     progress_cb("post-production done", 90.0)
 
-                asset.media_manifest = {"video_path": video_path, "provider": provider.name, "provider_attempts": [p.name for p in providers], "duration": duration, "resolution": resolution,
-                                        "scenes": num_scenes, "chapters": [c[1] for c in chapters]}
+                asset.media_manifest = {
+                    "video_path": video_path,
+                    "provider": provider.name,
+                    "provider_attempts": [p.name for p in providers],
+                    "duration": duration,
+                    "resolution": resolution,
+                    "scenes": num_scenes,
+                    "chapters": [c[1] for c in chapters],
+                }
                 asset.transition(AssetStatus.AWAITING_OWNER)
                 self._health.record_success(provider.name)
                 if progress_cb:
@@ -420,7 +427,15 @@ class VideoEngine:
 
     def _provider_candidates(self, preferred_provider: str | None, quality: str) -> list[Any]:
         if self._providers:
-            preferred = preferred_provider if preferred_provider else ("kling" if quality in ("high", "premium") else "seedance" if quality == "standard" else "ken_burns")
+            preferred = (
+                preferred_provider
+                if preferred_provider
+                else (
+                    "kling" if quality in ("high", "premium")
+                    else "seedance" if quality == "standard"
+                    else "ken_burns"
+                )
+            )
             return self._providers.configured_media_candidates("video", preferred, quality)
         return [self._select_video_provider(preferred_provider or self._select_provider(quality))]
 

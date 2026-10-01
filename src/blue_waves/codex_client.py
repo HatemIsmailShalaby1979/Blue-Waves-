@@ -117,7 +117,12 @@ class InMemoryCodexClient:
         }
 
     def emit_event(self, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-        event = {"event_id": f"bw-event-{uuid.uuid4().hex}", "tenant_id": self.tenant_id, "event_type": event_type, "payload": payload}
+        event = {
+            "event_id": f"bw-event-{uuid.uuid4().hex}",
+            "tenant_id": self.tenant_id,
+            "event_type": event_type,
+            "payload": payload,
+        }
         self.events.append(event)
         return {"accepted": True, "mode": "contract_test", **event}
 

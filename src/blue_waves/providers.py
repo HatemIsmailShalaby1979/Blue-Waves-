@@ -92,7 +92,10 @@ CLOUD_TEXT_CATALOG: tuple[dict[str, Any], ...] = (
     {"id": "groq", "type": "text", "free_quota": "developer-tier", "docs": "https://console.groq.com/docs"},
     {"id": "nvidia_nim", "type": "text", "free_quota": "credits-dependent", "docs": "https://docs.api.nvidia.com"},
     {"id": "cerebras", "type": "text", "free_quota": "developer-tier", "docs": "https://inference-docs.cerebras.ai"},
-    {"id": "huggingface", "type": "text", "free_quota": "account-dependent", "docs": "https://huggingface.co/docs/api-inference"},
+    {
+        "id": "huggingface", "type": "text", "free_quota": "account-dependent",
+        "docs": "https://huggingface.co/docs/api-inference",
+    },
 )
 
 
@@ -212,19 +215,24 @@ def configured_providers(settings: Any) -> dict[str, OpenAICompatibleProvider]:
             "lm_studio", settings.local_llm_base_url, settings.local_llm_model, mode="local"
         ),
         "openrouter": OpenAICompatibleProvider(
-            "openrouter", settings.openrouter_base_url, settings.openrouter_model or "openrouter/free", settings.openrouter_api_key
+            "openrouter", settings.openrouter_base_url,
+            settings.openrouter_model or "openrouter/free", settings.openrouter_api_key
         ),
         "groq": OpenAICompatibleProvider(
-            "groq", settings.groq_base_url, settings.groq_model or "llama-3.1-8b-instant", settings.groq_api_key
+            "groq", settings.groq_base_url,
+            settings.groq_model or "llama-3.1-8b-instant", settings.groq_api_key
         ),
         "nvidia_nim": OpenAICompatibleProvider(
-            "nvidia_nim", settings.nvidia_nim_base_url, settings.nvidia_nim_model or "meta/llama-3.1-8b-instruct", settings.nvidia_nim_api_key
+            "nvidia_nim", settings.nvidia_nim_base_url,
+            settings.nvidia_nim_model or "meta/llama-3.1-8b-instruct", settings.nvidia_nim_api_key
         ),
         "cerebras": OpenAICompatibleProvider(
-            "cerebras", settings.cerebras_base_url, settings.cerebras_model or "llama-3.3-70b", settings.cerebras_api_key
+            "cerebras", settings.cerebras_base_url,
+            settings.cerebras_model or "llama-3.3-70b", settings.cerebras_api_key
         ),
         "huggingface": OpenAICompatibleProvider(
-            "huggingface", settings.huggingface_base_url, settings.huggingface_model or "meta-llama/Llama-3.2-3B-Instruct", settings.huggingface_api_key
+            "huggingface", settings.huggingface_base_url,
+            settings.huggingface_model or "meta-llama/Llama-3.2-3B-Instruct", settings.huggingface_api_key
         ),
     }
 
@@ -1332,7 +1340,10 @@ class KenBurnsProvider:
 
         if img_paths:
             try:
-                return self._render_from_images(img_paths, text_path, escaped_text_path, font, width, height, duration, path, text_content, None)
+                return self._render_from_images(
+                    img_paths, text_path, escaped_text_path, font, width, height,
+                    duration, path, text_content, None,
+                )
             except Exception:
                 pass
             finally:
@@ -1349,7 +1360,10 @@ class KenBurnsProvider:
 
         num_images = len(img_paths)
         if num_images == 1:
-            return self._render_from_image(img_paths[0], text_path, escaped_text_path, font, width, height, duration, path, text_content, tmp_files)
+            return self._render_from_image(
+                img_paths[0], text_path, escaped_text_path, font, width, height,
+                duration, path, text_content, tmp_files,
+            )
 
         # Calculate duration per image
         img_duration = duration / num_images
@@ -1886,8 +1900,14 @@ class ProviderRegistry:
             "suno_api": ProviderCapability("suno_api", ("music",), quality_rank=98, estimated_cents=8),
             "aimlapi_music": ProviderCapability("aimlapi_music", ("music",), quality_rank=90, estimated_cents=5),
             "kai_music": ProviderCapability("kai_music", ("music",), quality_rank=70, estimated_cents=1),
-            "ace_step": ProviderCapability("ace_step", ("music",), mode="local", free_tier=True, estimated_cents=0, quality_rank=85),
-            "local_audio_fallback": ProviderCapability("local_audio_fallback", ("music",), mode="local", free_tier=True, estimated_cents=0, quality_rank=30),
+            "ace_step": ProviderCapability(
+                "ace_step", ("music",), mode="local", free_tier=True,
+                estimated_cents=0, quality_rank=85,
+            ),
+            "local_audio_fallback": ProviderCapability(
+                "local_audio_fallback", ("music",), mode="local", free_tier=True,
+                estimated_cents=0, quality_rank=30,
+            ),
             "elevenlabs_tts": ProviderCapability("elevenlabs_tts", ("tts",), quality_rank=95, estimated_cents=3),
             "kokoro": ProviderCapability(
                 "kokoro", ("tts",), quality_rank=85,
@@ -1898,11 +1918,17 @@ class ProviderRegistry:
             ),
             "google_tts": ProviderCapability("google_tts", ("tts",), quality_rank=90, estimated_cents=2),
             "edge_tts": ProviderCapability("edge_tts", ("tts",), free_tier=True, quality_rank=70, estimated_cents=0),
-            "local_tts_fallback": ProviderCapability("local_tts_fallback", ("tts",), mode="local", free_tier=True, estimated_cents=0, quality_rank=25),
+            "local_tts_fallback": ProviderCapability(
+                "local_tts_fallback", ("tts",), mode="local", free_tier=True,
+                estimated_cents=0, quality_rank=25,
+            ),
             "kling": ProviderCapability("kling", ("video",), quality_rank=95, estimated_cents=50),
             "seedance": ProviderCapability("seedance", ("video",), quality_rank=85, estimated_cents=30),
             "stock": ProviderCapability("stock", ("video",), free_tier=True, estimated_cents=0, quality_rank=70),
-            "ken_burns": ProviderCapability("ken_burns", ("video",), mode="local", free_tier=True, estimated_cents=0, quality_rank=40),
+            "ken_burns": ProviderCapability(
+                "ken_burns", ("video",), mode="local", free_tier=True,
+                estimated_cents=0, quality_rank=40,
+            ),
         }
         for capability in capabilities.values():
             self._rotation.register(capability)
@@ -2024,22 +2050,58 @@ class ProviderRegistry:
         return eligible
 
     def catalog(self) -> list[dict[str, Any]]:
-        entries = [{"id": "lm_studio", "type": "text", "mode": "local", "credential": "none", "free_quota": "local", "configured": self._text["local"].configured}]
+        entries = [{
+            "id": "lm_studio", "type": "text", "mode": "local", "credential": "none",
+            "free_quota": "local", "configured": self._text["local"].configured,
+        }]
         entries.extend([
             dict(item, mode="cloud", credential="api_key", configured=self._text[item["id"]].configured)
             for item in CLOUD_TEXT_CATALOG
         ])
         entries.extend([
-            {"id": "suno_api", "type": "music", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "suno_api" in self._music},
-            {"id": "aimlapi_music", "type": "music", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "aimlapi_music" in self._music},
-            {"id": "elevenlabs_tts", "type": "tts", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "elevenlabs_tts" in self._tts},
-            {"id": "kokoro", "type": "tts", "mode": "cloud", "credential": "api_key", "free_quota": "self-host/free-tier dependent", "configured": "kokoro" in self._tts},
-            {"id": "edge_tts", "type": "tts", "mode": "cloud", "credential": "none", "free_quota": "free", "configured": True},
-            {"id": "kling", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "kling" in self._video},
-            {"id": "seedance", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "account-dependent", "configured": "seedance" in self._video},
-            {"id": "stock", "type": "video", "mode": "cloud", "credential": "api_key", "free_quota": "free (Pexels/Pixabay key)", "configured": "stock" in self._video},
-            {"id": "ken_burns", "type": "video", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},
-            {"id": "local_audio_fallback", "type": "music", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},
-            {"id": "local_tts_fallback", "type": "tts", "mode": "local", "credential": "none", "free_quota": "free", "configured": True},
+            {
+                "id": "suno_api", "type": "music", "mode": "cloud", "credential": "api_key",
+                "free_quota": "account-dependent", "configured": "suno_api" in self._music,
+            },
+            {
+                "id": "aimlapi_music", "type": "music", "mode": "cloud", "credential": "api_key",
+                "free_quota": "account-dependent", "configured": "aimlapi_music" in self._music,
+            },
+            {
+                "id": "elevenlabs_tts", "type": "tts", "mode": "cloud", "credential": "api_key",
+                "free_quota": "account-dependent", "configured": "elevenlabs_tts" in self._tts,
+            },
+            {
+                "id": "kokoro", "type": "tts", "mode": "cloud", "credential": "api_key",
+                "free_quota": "self-host/free-tier dependent", "configured": "kokoro" in self._tts,
+            },
+            {
+                "id": "edge_tts", "type": "tts", "mode": "cloud", "credential": "none",
+                "free_quota": "free", "configured": True,
+            },
+            {
+                "id": "kling", "type": "video", "mode": "cloud", "credential": "api_key",
+                "free_quota": "account-dependent", "configured": "kling" in self._video,
+            },
+            {
+                "id": "seedance", "type": "video", "mode": "cloud", "credential": "api_key",
+                "free_quota": "account-dependent", "configured": "seedance" in self._video,
+            },
+            {
+                "id": "stock", "type": "video", "mode": "cloud", "credential": "api_key",
+                "free_quota": "free (Pexels/Pixabay key)", "configured": "stock" in self._video,
+            },
+            {
+                "id": "ken_burns", "type": "video", "mode": "local", "credential": "none",
+                "free_quota": "free", "configured": True,
+            },
+            {
+                "id": "local_audio_fallback", "type": "music", "mode": "local", "credential": "none",
+                "free_quota": "free", "configured": True,
+            },
+            {
+                "id": "local_tts_fallback", "type": "tts", "mode": "local", "credential": "none",
+                "free_quota": "free", "configured": True,
+            },
         ])
         return entries

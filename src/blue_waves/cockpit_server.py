@@ -80,7 +80,9 @@ class CockpitApp:
         }
 
     def get_rss_feed(self) -> str:
-        base_url = self._app.settings.cockpit_public_base_url or f"http://{self._app.settings.cockpit_host}:{self._app.settings.cockpit_port}"
+        base_url = self._app.settings.cockpit_public_base_url or (
+            f"http://{self._app.settings.cockpit_host}:{self._app.settings.cockpit_port}"
+        )
         return self._app.generate_podcast_rss(base_url=base_url)
 
     def sync_analytics(self) -> dict[str, Any]:
@@ -243,7 +245,13 @@ class CockpitApp:
                 "time_frame": "Monthly budget (resets each month); weekly publish cadence Mon/Wed/Fri",
             },
             "responsibilities": [
-                {"role": "SHEPO", "responsible": "Track real costs, project revenue, flag budget overruns, recommend provider ROI optimizations"},
+                {
+                    "role": "SHEPO",
+                    "responsible": (
+                        "Track real costs, project revenue, flag budget overruns, "
+                        "recommend provider ROI optimizations"
+                    ),
+                },
                 {"role": "JOE", "responsible": "Track costs, runway and revenue scenarios; surface cost alerts"},
                 {"role": "LEO", "responsible": "Queue approved publication; collect platform metrics"},
                 {"role": "BELAL", "responsible": "Produce media within quality gates; keep within budget"},
@@ -823,7 +831,11 @@ class CockpitHTTPHandler(BaseHTTPRequestHandler):
             if len(parts) >= 4:
                 content_type = parts[3]
                 try:
-                    raw_body = body.decode("utf-8") if isinstance(body, (bytes, bytearray)) else (body if isinstance(body, str) else "{}")
+                    raw_body = (
+                        body.decode("utf-8")
+                        if isinstance(body, (bytes, bytearray))
+                        else (body if isinstance(body, str) else "{}")
+                    )
                     print(f"[DEBUG] generate: content_type={content_type}, raw_body={raw_body[:500]}")
                     data = json.loads(raw_body)
                     if not isinstance(data, dict):

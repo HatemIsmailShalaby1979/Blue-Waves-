@@ -46,7 +46,12 @@ def run_demo(app: BlueWavesApplication, topic: str, source_url: str | None, sour
         approved = app.owner_approve(asset)
         published = app.publish(asset, "youtube")
         app.record_metric(asset, "youtube", "watch_time_seconds", 0, source="contract_test_placeholder")
-        outputs.append({"asset_id": asset.asset_id, "language": asset.language.value, "approved": approved, "published": published})
+        outputs.append({
+            "asset_id": asset.asset_id,
+            "language": asset.language.value,
+            "approved": approved,
+            "published": published,
+        })
     return {"registration": registration, "videos": outputs, "weekly_review": app.weekly_review(), "health": app.health()}
 
 

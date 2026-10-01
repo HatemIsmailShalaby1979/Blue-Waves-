@@ -5,7 +5,10 @@ from blue_waves.provider_rotation import ProviderCapability, ProviderRotationMat
 
 def test_rotation_reserves_and_releases_quota(tmp_path):
     matrix = ProviderRotationMatrix(tmp_path / "rotation.json")
-    matrix.register(ProviderCapability("free_music", ("music",), free_tier=True, daily_quota=2, monthly_quota=5, estimated_cents=0))
+    matrix.register(ProviderCapability(
+        "free_music", ("music",), free_tier=True, daily_quota=2,
+        monthly_quota=5, estimated_cents=0,
+    ))
 
     first = matrix.reserve("free_music")
     second = matrix.reserve("free_music")
@@ -23,7 +26,10 @@ def test_rotation_reserves_and_releases_quota(tmp_path):
 def test_rotation_resets_daily_and_monthly_usage(tmp_path):
     now = [datetime(2026, 9, 4, tzinfo=timezone.utc)]
     matrix = ProviderRotationMatrix(tmp_path / "rotation.json", now=lambda: now[0])
-    matrix.register(ProviderCapability("free_video", ("video",), free_tier=True, daily_quota=1, monthly_quota=2, estimated_cents=0))
+    matrix.register(ProviderCapability(
+        "free_video", ("video",), free_tier=True, daily_quota=1,
+        monthly_quota=2, estimated_cents=0,
+    ))
     assert matrix.reserve("free_video") is not None
 
     now[0] = datetime(2026, 9, 5, tzinfo=timezone.utc)

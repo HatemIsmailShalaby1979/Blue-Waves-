@@ -34,7 +34,7 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
         asset_id = path.removeprefix("/v1/assets/").split("/", 1)[0]
         return self.application.get_asset(asset_id)
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:  # noqa: N802  # method name is fixed by BaseHTTPRequestHandler
         parsed = urlparse(self.path)
         path = parsed.path
         # ── Original v0.1.0 endpoints ──
@@ -56,9 +56,19 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
         elif path == "/v1/providers/catalog":
             self._json(200, {"providers": self.application.provider_registry.catalog()})
         elif path == "/v1/music":
-            self._json(200, {"assets": [a.to_dict() for a in self.application.music_assets.values() if self._media_exists(a.audio_path)]})
+            self._json(200, {
+                "assets": [
+                    a.to_dict() for a in self.application.music_assets.values()
+                    if self._media_exists(a.audio_path)
+                ]
+            })
         elif path == "/v1/podcasts":
-            self._json(200, {"assets": [a.to_dict() for a in self.application.podcast_assets.values() if self._media_exists(a.audio_path)]})
+            self._json(200, {
+                "assets": [
+                    a.to_dict() for a in self.application.podcast_assets.values()
+                    if self._media_exists(a.audio_path)
+                ]
+            })
         elif path == "/v1/videos":
             self._json(200, {"assets": [a.to_dict() for a in self.application.assets.values()
                                           if self._media_exists(a.media_manifest.get("video_path"))]})
@@ -67,24 +77,52 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
             ready = []
             for aid, a in self.application.music_assets.items():
                 if a.status.value == "awaiting_owner":
-                    pending.append({"type": "music", "asset_id": aid, "title": a.title, "status": a.status.value, "media_url": f"/media/music/{aid}"})
+                    pending.append({
+                        "type": "music",
+                        "asset_id": aid,
+                        "title": a.title,
+                        "status": a.status.value,
+                        "media_url": f"/media/music/{aid}",
+                    })
                 elif a.status.value == "approved":
                     ready.append({"type": "music", "asset_id": aid, "title": a.title})
             for aid, a in self.application.podcast_assets.items():
                 if a.status.value == "awaiting_owner":
-                    pending.append({"type": "podcast", "asset_id": aid, "title": a.title, "status": a.status.value, "media_url": f"/media/podcast/{aid}"})
+                    pending.append({
+                        "type": "podcast",
+                        "asset_id": aid,
+                        "title": a.title,
+                        "status": a.status.value,
+                        "media_url": f"/media/podcast/{aid}",
+                    })
                 elif a.status.value == "approved":
                     ready.append({"type": "podcast", "asset_id": aid, "title": a.title})
             for aid, a in self.application.assets.items():
                 if a.status.value == "awaiting_owner":
-                    pending.append({"type": "video", "asset_id": aid, "title": a.topic, "status": a.status.value, "media_url": f"/media/video/{aid}"})
+                    pending.append({
+                        "type": "video",
+                        "asset_id": aid,
+                        "title": a.topic,
+                        "status": a.status.value,
+                        "media_url": f"/media/video/{aid}",
+                    })
                 elif a.status.value == "approved":
                     ready.append({"type": "video", "asset_id": aid, "title": a.topic})
             retryable = []
-            for kind, assets in (("music", self.application.music_assets), ("podcast", self.application.podcast_assets), ("video", self.application.assets)):
+            for kind, assets in (
+                ("music", self.application.music_assets),
+                ("podcast", self.application.podcast_assets),
+                ("video", self.application.assets),
+            ):
                 for aid, a in assets.items():
                     if a.status.value == "rejected":
-                        retryable.append({"type": kind, "asset_id": aid, "title": getattr(a, "title", getattr(a, "topic", aid)), "status": "rejected", "reason": a.rejection_reason})
+                        retryable.append({
+                            "type": kind,
+                            "asset_id": aid,
+                            "title": getattr(a, "title", getattr(a, "topic", aid)),
+                            "status": "rejected",
+                            "reason": a.rejection_reason,
+                        })
             self._json(200, {"pending": pending, "retryable": retryable, "ready_to_publish": ready})
         elif path == "/v1/connections":
             self._json(200, self.application.connection_status())
@@ -158,7 +196,7 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:  # noqa: N802  # method name is fixed by BaseHTTPRequestHandler
         try:
             path = urlparse(self.path).path
             body = self._body()
@@ -181,7 +219,11 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 return
             if path.endswith("/approve") and path.startswith("/v1/assets/"):
                 asset = self._asset(path)
-                result = self.application.owner_approve(asset, reason=str(body.get("reason", "owner reviewed preview")), approver=body.get("approver"))
+                result = self.application.owner_approve(
+                    asset,
+                    reason=str(body.get("reason", "owner reviewed preview")),
+                    approver=body.get("approver"),
+                )
                 self._json(200, result)
                 return
             if path.endswith("/publish") and path.startswith("/v1/assets/"):
@@ -191,7 +233,13 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 return
             if path.endswith("/metrics") and path.startswith("/v1/assets/"):
                 asset = self._asset(path)
-                result = self.application.record_metric(asset, str(body["channel"]), str(body["metric"]), float(body["value"]), str(body.get("source", "owner_import")))
+                result = self.application.record_metric(
+                    asset,
+                    str(body["channel"]),
+                    str(body["metric"]),
+                    float(body["value"]),
+                    str(body.get("source", "owner_import")),
+                )
                 self._json(201, result)
                 return
             # ── New v0.2.0 endpoints ──
@@ -259,24 +307,62 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 self._json(200, result)
                 return
             if path.startswith("/v1/reject/music/"):
-                self._json(200, self.application.reject_music(path.removeprefix("/v1/reject/music/"), str(body.get("reason", "owner rejected")), body.get("approver")))
+                self._json(
+                    200,
+                    self.application.reject_music(
+                        path.removeprefix("/v1/reject/music/"),
+                        str(body.get("reason", "owner rejected")),
+                        body.get("approver"),
+                    ),
+                )
                 return
             if path.startswith("/v1/reject/podcast/"):
-                self._json(200, self.application.reject_podcast(path.removeprefix("/v1/reject/podcast/"), str(body.get("reason", "owner rejected")), body.get("approver")))
+                self._json(
+                    200,
+                    self.application.reject_podcast(
+                        path.removeprefix("/v1/reject/podcast/"),
+                        str(body.get("reason", "owner rejected")),
+                        body.get("approver"),
+                    ),
+                )
                 return
             if path.startswith("/v1/reject/video/"):
-                self._json(200, self.application.reject_asset(self.application.get_asset(path.removeprefix("/v1/reject/video/")), str(body.get("reason", "owner rejected")), body.get("approver")))
+                self._json(
+                    200,
+                    self.application.reject_asset(
+                        self.application.get_asset(
+                            path.removeprefix("/v1/reject/video/")
+                        ),
+                        str(body.get("reason", "owner rejected")),
+                        body.get("approver"),
+                    ),
+                )
                 return
             if path.startswith("/v1/retry/music/"):
-                asset = self.application.retry_music(path.removeprefix("/v1/retry/music/"), str(body.get("enhancement", "Improve arrangement, dynamics, and clarity.")), str(body.get("quality", "high")), body.get("approver"))
+                asset = self.application.retry_music(
+                    path.removeprefix("/v1/retry/music/"),
+                    str(body.get("enhancement", "Improve arrangement, dynamics, and clarity.")),
+                    str(body.get("quality", "high")),
+                    body.get("approver"),
+                )
                 self._json(201, asset.to_dict())
                 return
             if path.startswith("/v1/retry/podcast/"):
-                asset = self.application.retry_podcast(path.removeprefix("/v1/retry/podcast/"), str(body.get("enhancement", "Improve pacing, diction, and mix balance.")), str(body.get("quality", "high")), body.get("approver"))
+                asset = self.application.retry_podcast(
+                    path.removeprefix("/v1/retry/podcast/"),
+                    str(body.get("enhancement", "Improve pacing, diction, and mix balance.")),
+                    str(body.get("quality", "high")),
+                    body.get("approver"),
+                )
                 self._json(201, asset.to_dict())
                 return
             if path.startswith("/v1/retry/video/"):
-                asset = self.application.retry_video(path.removeprefix("/v1/retry/video/"), str(body.get("enhancement", "Improve visual pacing, composition, and readability.")), str(body.get("quality", "high")), body.get("approver"))
+                asset = self.application.retry_video(
+                    path.removeprefix("/v1/retry/video/"),
+                    str(body.get("enhancement", "Improve visual pacing, composition, and readability.")),
+                    str(body.get("quality", "high")),
+                    body.get("approver"),
+                )
                 self._json(201, asset.to_dict())
                 return
             if path == "/v1/connections":
@@ -293,7 +379,16 @@ class BlueWavesHandler(BaseHTTPRequestHandler):
                 parts = path.split("/")
                 if len(parts) != 4:
                     raise ValueError("metric path must include an asset id")
-                self._json(201, self.application.record_media_metric(parts[3], str(body["channel"]), str(body["metric"]), float(body["value"]), str(body.get("source", "owner_import"))))
+                self._json(
+                    201,
+                    self.application.record_media_metric(
+                        parts[3],
+                        str(body["channel"]),
+                        str(body["metric"]),
+                        float(body["value"]),
+                        str(body.get("source", "owner_import")),
+                    ),
+                )
                 return
             self._json(404, {"error": "not_found"})
         except (KeyError, ValueError) as exc:

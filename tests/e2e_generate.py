@@ -41,9 +41,13 @@ def generate_video() -> dict:
     print("═══════════════════════════════════════════════════════════════")
     payload = {
         "topic": "Software Engineering Best Practices: Clean Code, SOLID Principles, and Modern Development Workflows",
-        "prompt": "A professional educational title card for a software engineering course. "
-                  "Title: 'Software Engineering Best Practices'. Subtitle: 'Clean Code · SOLID Principles · Modern Workflows'. "
-                  "Dark navy gradient background with geometric code symbols. Modern, minimal typography.",
+        "prompt": (
+            "A professional educational title card for a software engineering course. "
+            "Title: 'Software Engineering Best Practices'. "
+            "Subtitle: 'Clean Code · SOLID Principles · Modern Workflows'. "
+            "Dark navy gradient background with geometric code symbols. "
+            "Modern, minimal typography."
+        ),
         "duration": 180,
         "quality": "high",
     }

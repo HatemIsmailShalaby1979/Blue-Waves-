@@ -134,9 +134,13 @@ class ConnectionStore:
 
     @staticmethod
     def public(provider: str, values: dict[str, Any]) -> dict[str, Any]:
-        return {"provider": provider, "connected": bool(values.get("access_token") or values.get("api_key") or values.get("client_id")),
-                "account": values.get("account"), "scopes": values.get("scopes", []),
-                "configured": bool(values.get("client_id") or values.get("api_key"))}
+        return {
+            "provider": provider,
+            "connected": bool(values.get("access_token") or values.get("api_key") or values.get("client_id")),
+            "account": values.get("account"),
+            "scopes": values.get("scopes", []),
+            "configured": bool(values.get("client_id") or values.get("api_key")),
+        }
 
     def status(self) -> dict[str, Any]:
         data = self._read()
@@ -157,8 +161,13 @@ class ConnectionStore:
         config = self.get("youtube")
         if not secrets.compare_digest(str(config.get("oauth_state", "")), state):
             raise ValueError("invalid YouTube OAuth state")
-        payload = urllib.parse.urlencode({"code": code, "client_id": config["client_id"], "client_secret": config.get("client_secret", ""),
-                                          "redirect_uri": config["redirect_uri"], "grant_type": "authorization_code"}).encode()
+        payload = urllib.parse.urlencode({
+            "code": code,
+            "client_id": config["client_id"],
+            "client_secret": config.get("client_secret", ""),
+            "redirect_uri": config["redirect_uri"],
+            "grant_type": "authorization_code",
+        }).encode()
         token_url = "https://oauth2.googleapis.com/token"
         _validate_token_url(token_url)
         request = urllib.request.Request(token_url, data=payload, method="POST")
@@ -167,7 +176,11 @@ class ConnectionStore:
         # Record what Google actually granted when it says so; otherwise assume
         # the requested set was granted, so the record never under-reports.
         granted = token.get("scope")
-        scopes = [str(s) for s in granted.split()] if isinstance(granted, str) and granted.strip() else list(YOUTUBE_SCOPE_NAMES)
+        scopes = (
+            [str(s) for s in granted.split()]
+            if isinstance(granted, str) and granted.strip()
+            else list(YOUTUBE_SCOPE_NAMES)
+        )
         return self.save("youtube", {"access_token": token.get("access_token"), "refresh_token": token.get("refresh_token"),
                                       "scopes": scopes, "account": "authorized YouTube account", "oauth_state": None})
 

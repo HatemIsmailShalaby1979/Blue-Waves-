@@ -194,7 +194,10 @@ class YouTubeUploadService:
     ) -> dict[str, Any]:
         """Upload audio file as a video (with static image) to YouTube."""
         if audio_path.suffix.lower() in {".mp4", ".mov", ".webm"}:
-            return self.upload_video(audio_path, title, description, tags, category_id=category_id, privacy_status=privacy_status)
+            return self.upload_video(
+                audio_path, title, description, tags,
+                category_id=category_id, privacy_status=privacy_status,
+            )
         fd, rendered_name = tempfile.mkstemp(suffix=".mp4")
         os.close(fd)
         rendered = Path(rendered_name)
@@ -205,7 +208,10 @@ class YouTubeUploadService:
         ]
         try:
             subprocess.run(command, check=True, timeout=180, capture_output=True)
-            return self.upload_video(rendered, title, description, tags, category_id=category_id, privacy_status=privacy_status)
+            return self.upload_video(
+                rendered, title, description, tags,
+                category_id=category_id, privacy_status=privacy_status,
+            )
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             raise RuntimeError(f"could not package audio as a YouTube video: {exc}") from exc
         finally:

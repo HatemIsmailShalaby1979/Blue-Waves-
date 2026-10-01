@@ -85,7 +85,11 @@ class BlueWavesApplication:
         self.sponsors = SponsorTracker(self.settings.data_dir)
         providers = configured_providers(self.settings)
         self.local_provider = providers["local"]
-        cloud_providers = [providers[name] for name in ("openrouter", "groq", "cerebras", "nvidia_nim", "huggingface") if providers[name].configured]
+        cloud_providers = [
+            providers[name]
+            for name in ("openrouter", "groq", "cerebras", "nvidia_nim", "huggingface")
+            if providers[name].configured
+        ]
         cloud_provider = cloud_providers[0] if cloud_providers else None
         self.hybrid = HybridRouter(self.governance, self.local_provider, cloud_provider, clouds=cloud_providers)
         self.research = ResearchEngine()
@@ -238,7 +242,12 @@ class BlueWavesApplication:
         for asset in (ar, en):
             self.assets[asset.asset_id] = asset
             self.store.save_asset(asset)
-            self.ledger.append("script_created", {"asset_id": asset.asset_id, "language": asset.language.value}, asset.tenant_id, "ZACK")
+            self.ledger.append(
+                "script_created",
+                {"asset_id": asset.asset_id, "language": asset.language.value},
+                asset.tenant_id,
+                "ZACK",
+            )
         return ar, en
 
     def get_asset(self, asset_id: str) -> ContentAsset:
@@ -251,7 +260,12 @@ class BlueWavesApplication:
         unsupported = self.fact_checker.review(asset)
         if unsupported:
             self.store.save_asset(asset)
-            self.ledger.append("fact_check_blocked", {"asset_id": asset.asset_id, "claim_ids": unsupported}, asset.tenant_id, "ANDY")
+            self.ledger.append(
+                "fact_check_blocked",
+                {"asset_id": asset.asset_id, "claim_ids": unsupported},
+                asset.tenant_id,
+                "ANDY",
+            )
             return {"asset_id": asset.asset_id, "ready": False, "unsupported_claims": unsupported}
         motion_route = self.hybrid.route(Stage.MOTION)
         self.hybrid.assert_route_is_allowed(motion_route)
@@ -262,10 +276,20 @@ class BlueWavesApplication:
             "reason": motion_route.reason,
         }
         self.store.save_asset(asset)
-        self.ledger.append("production_manifest_created", {"asset_id": asset.asset_id, "manifest": manifest}, asset.tenant_id, "BELAL")
+        self.ledger.append(
+            "production_manifest_created",
+            {"asset_id": asset.asset_id, "manifest": manifest},
+            asset.tenant_id,
+            "BELAL",
+        )
         return {"asset_id": asset.asset_id, "ready": True, "manifest": manifest}
 
-    def owner_approve(self, asset: ContentAsset, reason: str = "owner reviewed preview", approver: str | None = None) -> dict[str, Any]:
+    def owner_approve(
+        self,
+        asset: ContentAsset,
+        reason: str = "owner reviewed preview",
+        approver: str | None = None,
+    ) -> dict[str, Any]:
         # Legacy lesson approval predates rendered media; generated v0.2 videos
         # carry a concrete preview path and must pass the preview guard.
         quality_score: float | None = None
@@ -336,7 +360,14 @@ class BlueWavesApplication:
         self.codex.emit_event("content_published", publication)
         return publication
 
-    def record_metric(self, asset: ContentAsset, channel: str, metric: str, value: float, source: str = "owner_import") -> dict[str, Any]:
+    def record_metric(
+        self,
+        asset: ContentAsset,
+        channel: str,
+        metric: str,
+        value: float,
+        source: str = "owner_import",
+    ) -> dict[str, Any]:
         event = MetricEvent(
             event_id=f"metric-{uuid.uuid4().hex[:10]}",
             tenant_id=asset.tenant_id,
@@ -353,7 +384,14 @@ class BlueWavesApplication:
         self.metacognition.add_metric(payload)
         return payload
 
-    def record_media_metric(self, asset_id: str, channel: str, metric: str, value: float, source: str = "owner_import") -> dict[str, Any]:
+    def record_media_metric(
+        self,
+        asset_id: str,
+        channel: str,
+        metric: str,
+        value: float,
+        source: str = "owner_import",
+    ) -> dict[str, Any]:
         if asset_id in self.music_assets:
             asset = self.music_assets[asset_id]
             topic, tenant = asset.title, asset.tenant_id
@@ -362,8 +400,15 @@ class BlueWavesApplication:
             topic, tenant = asset.topic, asset.tenant_id
         else:
             raise KeyError(f"unknown media asset: {asset_id}")
-        event = MetricEvent(event_id=f"metric-{uuid.uuid4().hex[:10]}", tenant_id=tenant, asset_id=asset_id,
-                            channel=channel, metric=metric, value=value, source=source)
+        event = MetricEvent(
+            event_id=f"metric-{uuid.uuid4().hex[:10]}",
+            tenant_id=tenant,
+            asset_id=asset_id,
+            channel=channel,
+            metric=metric,
+            value=value,
+            source=source,
+        )
         payload = asdict(event)
         self.store.save_metric(event)
         self.metacognition.add_metric(payload)
@@ -401,7 +446,12 @@ class BlueWavesApplication:
     def sync_all_published_metrics(self) -> dict[str, Any]:
         """Fetch and record YouTube analytics for every published asset that has a video ID."""
         published = [
-            asset for asset in list(self.assets.values()) + list(self.music_assets.values()) + list(self.podcast_assets.values())
+            asset
+            for asset in (
+                list(self.assets.values())
+                + list(self.music_assets.values())
+                + list(self.podcast_assets.values())
+            )
             if asset.status == AssetStatus.PUBLISHED and asset.media_manifest.get("youtube_video_id")
         ]
         results: dict[str, Any] = {"synced": [], "failed": []}
@@ -576,8 +626,14 @@ class BlueWavesApplication:
 
     def outreach_email_for(self, prospect_id: str, company: str = "") -> str:
         prospect = self.sponsors.get(prospect_id)
-        generator = MediaKitGenerator(metrics=self.store.latest_metrics(),
-                                      assets={"videos": len(self.assets), "music": len(self.music_assets), "podcasts": len(self.podcast_assets)})
+        generator = MediaKitGenerator(
+            metrics=self.store.latest_metrics(),
+            assets={
+                "videos": len(self.assets),
+                "music": len(self.music_assets),
+                "podcasts": len(self.podcast_assets),
+            },
+        )
         return generator.outreach_email(prospect, company)
 
     def sponsor_pipeline(self) -> dict[str, Any]:
@@ -607,7 +663,10 @@ class BlueWavesApplication:
         # iTunes specific tags
         itunes_owner = ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}owner")
         ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}name").text = "Blue Waves"
-        ET.SubElement(itunes_owner, "{http://www.itunes.com/dtds/podcast-1.0.dtd}email").text = "podcasts@bluewaves.example.com"
+        ET.SubElement(
+            itunes_owner,
+            "{http://www.itunes.com/dtds/podcast-1.0.dtd}email",
+        ).text = "podcasts@bluewaves.example.com"
         ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}category", text="Education")
         ET.SubElement(channel, "{http://www.itunes.com/dtds/podcast-1.0.dtd}explicit").text = "false"
 
@@ -631,14 +690,19 @@ class BlueWavesApplication:
             item = ET.SubElement(channel, "item")
             ET.SubElement(item, "title").text = asset.title
             ET.SubElement(item, "description").text = f"Podcast about {asset.topic}"
-            ET.SubElement(item, "pubDate").text = datetime.fromisoformat(asset.created_at.replace('Z', '+00:00')).strftime("%a, %d %b %Y %H:%M:%S GMT")
+            ET.SubElement(item, "pubDate").text = datetime.fromisoformat(
+                asset.created_at.replace('Z', '+00:00')
+            ).strftime("%a, %d %b %Y %H:%M:%S GMT")
             ET.SubElement(item, "guid").text = asset.asset_id
 
             # Enclosure for audio
             ET.SubElement(item, "enclosure", url=audio_url, type=audio_type, length="0")
 
             # iTunes tags
-            ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}duration").text = str(asset.duration_target_seconds)
+            ET.SubElement(
+                item,
+                "{http://www.itunes.com/dtds/podcast-1.0.dtd}duration",
+            ).text = str(asset.duration_target_seconds)
             ET.SubElement(item, "{http://www.itunes.com/dtds/podcast-1.0.dtd}episodeType").text = "full"
 
         # Pretty print
@@ -654,7 +718,12 @@ class BlueWavesApplication:
         asset.transition(AssetStatus.REJECTED)
         asset.rejection_reason = reason
         self.store.save_asset(asset)
-        self.ledger.append("asset_rejected", {"asset_id": asset.asset_id, "reason": reason}, asset.tenant_id, self.settings.owner_actor)
+        self.ledger.append(
+            "asset_rejected",
+            {"asset_id": asset.asset_id, "reason": reason},
+            asset.tenant_id,
+            self.settings.owner_actor,
+        )
         return {"asset_id": asset.asset_id, "status": "rejected", "reason": reason}
 
     def reject_music(self, asset_id: str, reason: str = "owner rejected", approver: str | None = None) -> dict[str, Any]:
@@ -667,7 +736,12 @@ class BlueWavesApplication:
         asset.transition(AssetStatus.REJECTED)
         asset.rejection_reason = reason
         self.store.save_music(asset)
-        self.ledger.append("music_rejected", {"asset_id": asset_id, "reason": reason}, self.settings.tenant_id, self.settings.owner_actor)
+        self.ledger.append(
+            "music_rejected",
+            {"asset_id": asset_id, "reason": reason},
+            self.settings.tenant_id,
+            self.settings.owner_actor,
+        )
         return {"asset_id": asset_id, "status": "rejected", "reason": reason}
 
     def reject_podcast(self, asset_id: str, reason: str = "owner rejected", approver: str | None = None) -> dict[str, Any]:
@@ -680,7 +754,12 @@ class BlueWavesApplication:
         asset.transition(AssetStatus.REJECTED)
         asset.rejection_reason = reason
         self.store.save_podcast(asset)
-        self.ledger.append("podcast_rejected", {"asset_id": asset_id, "reason": reason}, self.settings.tenant_id, self.settings.owner_actor)
+        self.ledger.append(
+            "podcast_rejected",
+            {"asset_id": asset_id, "reason": reason},
+            self.settings.tenant_id,
+            self.settings.owner_actor,
+        )
         return {"asset_id": asset_id, "status": "rejected", "reason": reason}
 
     def retry_music(self, asset_id: str, enhancement: str = "Improve arrangement, dynamics, and clarity.",
@@ -699,7 +778,17 @@ class BlueWavesApplication:
         asset.parent_asset_id = previous.asset_id
         asset.metadata["enhancement"] = enhancement
         self.store.save_music(asset)
-        self.ledger.append("music_retry_generated", {"asset_id": asset.asset_id, "parent_asset_id": asset_id, "attempt": asset.attempt, "enhancement": enhancement}, self.settings.tenant_id, "BELAL")
+        self.ledger.append(
+            "music_retry_generated",
+            {
+                "asset_id": asset.asset_id,
+                "parent_asset_id": asset_id,
+                "attempt": asset.attempt,
+                "enhancement": enhancement,
+            },
+            self.settings.tenant_id,
+            "BELAL",
+        )
         return asset
 
     def retry_podcast(self, asset_id: str, enhancement: str = "Improve pacing, diction, and mix balance.",
@@ -720,7 +809,17 @@ class BlueWavesApplication:
         asset.parent_asset_id = previous.asset_id
         asset.metadata["enhancement"] = enhancement
         self.store.save_podcast(asset)
-        self.ledger.append("podcast_retry_generated", {"asset_id": asset.asset_id, "parent_asset_id": asset_id, "attempt": asset.attempt, "enhancement": enhancement}, self.settings.tenant_id, "ZACK")
+        self.ledger.append(
+            "podcast_retry_generated",
+            {
+                "asset_id": asset.asset_id,
+                "parent_asset_id": asset_id,
+                "attempt": asset.attempt,
+                "enhancement": enhancement,
+            },
+            self.settings.tenant_id,
+            "ZACK",
+        )
         return asset
 
     def retry_video(self, asset_id: str, enhancement: str = "Improve visual pacing, composition, and readability.",
@@ -739,33 +838,67 @@ class BlueWavesApplication:
         asset.parent_asset_id = previous.asset_id
         asset.media_manifest["enhancement"] = enhancement
         self.store.save_asset(asset)
-        self.ledger.append("video_retry_generated", {"asset_id": asset.asset_id, "parent_asset_id": asset_id, "attempt": asset.attempt, "enhancement": enhancement}, self.settings.tenant_id, "BELAL")
+        self.ledger.append(
+            "video_retry_generated",
+            {
+                "asset_id": asset.asset_id,
+                "parent_asset_id": asset_id,
+                "attempt": asset.attempt,
+                "enhancement": enhancement,
+            },
+            self.settings.tenant_id,
+            "BELAL",
+        )
         return asset
 
     def intelligence(self) -> dict[str, Any]:
         assets: dict[str, dict[str, Any]] = {}
         for asset in self.assets.values():
-            assets[asset.asset_id] = {"content_type": "video", "topic": asset.topic, "provider": asset.media_manifest.get("provider", "unknown")}
+            assets[asset.asset_id] = {
+                "content_type": "video",
+                "topic": asset.topic,
+                "provider": asset.media_manifest.get("provider", "unknown"),
+            }
         for asset in self.music_assets.values():
             assets[asset.asset_id] = {"content_type": "music", "topic": asset.title, "provider": asset.provider}
         for asset in self.podcast_assets.values():
             assets[asset.asset_id] = {"content_type": "podcast", "topic": asset.topic, "provider": asset.tts_provider}
-        return {"performance_ranking": self.metacognition.rank_assets(assets), "shipo": self.metacognition.shipo_recommendations(assets), "approved_memory": self.metacognition.memories()}
+        return {
+            "performance_ranking": self.metacognition.rank_assets(assets),
+            "shipo": self.metacognition.shipo_recommendations(assets),
+            "approved_memory": self.metacognition.memories(),
+        }
 
     def approve_memory(self, memory_id: str) -> dict[str, Any]:
-        candidate = next((item for item in self.metacognition.rank_assets(self._intelligence_assets()) if item["memory_id"] == memory_id), None)
+        candidate = next(
+            (
+                item
+                for item in self.metacognition.rank_assets(self._intelligence_assets())
+                if item["memory_id"] == memory_id
+            ),
+            None,
+        )
         if not candidate:
             raise KeyError(f"unknown memory proposal: {memory_id}")
         memory = PerformanceMemory(**candidate)
         approved = self.metacognition.approve(memory)
         self.store.save_memory(approved)
-        self.ledger.append("performance_memory_approved", approved.to_dict(), self.settings.tenant_id, self.settings.owner_actor)
+        self.ledger.append(
+            "performance_memory_approved",
+            approved.to_dict(),
+            self.settings.tenant_id,
+            self.settings.owner_actor,
+        )
         return approved.to_dict()
 
     def _intelligence_assets(self) -> dict[str, dict[str, Any]]:
         data = {}
         for a in self.assets.values():
-            data[a.asset_id] = {"content_type":"video", "topic":a.topic, "provider":a.media_manifest.get("provider", "unknown")}
+            data[a.asset_id] = {
+                "content_type": "video",
+                "topic": a.topic,
+                "provider": a.media_manifest.get("provider", "unknown"),
+            }
         for a in self.music_assets.values():
             data[a.asset_id] = {"content_type":"music", "topic":a.title, "provider":a.provider}
         for a in self.podcast_assets.values():
@@ -803,8 +936,17 @@ class BlueWavesApplication:
             "ledger_intact": integrity,
             "ledger_message": message,
             "cloud_budget_cents": self.settings.monthly_cloud_cents,
-            "cloud_motion": [name for name in self.provider_registry.list_providers()["video"] if name != "ken_burns"] or "deferred_until_verified_provider",
-            "configured_cloud_motion": [name for name in self.provider_registry.list_providers()["video"] if name != "ken_burns"],
+            "cloud_motion": (
+                [
+                    name for name in self.provider_registry.list_providers()["video"]
+                    if name != "ken_burns"
+                ]
+                or "deferred_until_verified_provider"
+            ),
+            "configured_cloud_motion": [
+                name for name in self.provider_registry.list_providers()["video"]
+                if name != "ken_burns"
+            ],
             "hybrid_motion_route": self.hybrid.route(Stage.MOTION).mode,
             "queue_size": self.queue.size(),
             "music_assets": len(self.music_assets),
@@ -1562,7 +1704,12 @@ class BlueWavesApplication:
 
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_music(asset)
-        self.ledger.append("music_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")
+        self.ledger.append(
+            "music_published",
+            {"asset_id": asset_id, "channel": channel, "youtube": youtube_result},
+            self.settings.tenant_id,
+            "LEO",
+        )
         return {"asset_id": asset_id, "channel": channel, "status": "published", "youtube": youtube_result}
 
     def publish_podcast(self, asset_id: str, channel: str = "youtube") -> dict[str, Any]:
@@ -1599,7 +1746,12 @@ class BlueWavesApplication:
 
         asset.transition(AssetStatus.PUBLISHED)
         self.store.save_podcast(asset)
-        self.ledger.append("podcast_published", {"asset_id": asset_id, "channel": channel, "youtube": youtube_result}, self.settings.tenant_id, "LEO")
+        self.ledger.append(
+            "podcast_published",
+            {"asset_id": asset_id, "channel": channel, "youtube": youtube_result},
+            self.settings.tenant_id,
+            "LEO",
+        )
         return {"asset_id": asset_id, "channel": channel, "status": "published", "youtube": youtube_result}
 
     def get_queue_status(self) -> dict[str, Any]:
@@ -1706,7 +1858,21 @@ class BlueWavesApplication:
 
     def save_connection(self, provider: str, values: dict[str, Any]) -> dict[str, Any]:
         result = self.connections.save(provider, values)
-        field_map = {"openrouter": "openrouter_api_key", "groq": "groq_api_key", "nvidia_nim": "nvidia_nim_api_key", "cerebras": "cerebras_api_key", "huggingface": "huggingface_api_key", "suno": "suno_api_key", "kling": "kling_api_key", "seedance": "seedance_api_key", "kokoro": "kokoro_api_key", "aimlapi": "aimlapi_api_key", "kai": "kai_api_key", "pexels": "pexels_api_key", "pixabay": "pixabay_api_key"}
+        field_map = {
+            "openrouter": "openrouter_api_key",
+            "groq": "groq_api_key",
+            "nvidia_nim": "nvidia_nim_api_key",
+            "cerebras": "cerebras_api_key",
+            "huggingface": "huggingface_api_key",
+            "suno": "suno_api_key",
+            "kling": "kling_api_key",
+            "seedance": "seedance_api_key",
+            "kokoro": "kokoro_api_key",
+            "aimlapi": "aimlapi_api_key",
+            "kai": "kai_api_key",
+            "pexels": "pexels_api_key",
+            "pixabay": "pixabay_api_key",
+        }
         settings_updates: dict[str, Any] = {}
         if provider in field_map and values.get("api_key"):
             settings_updates[field_map[provider]] = values["api_key"]
@@ -1734,7 +1900,11 @@ class BlueWavesApplication:
             self.podcast_engine._providers = self.provider_registry
             self.video_engine._providers = self.provider_registry
             providers = configured_providers(self.settings)
-            clouds = [providers[name] for name in ("openrouter", "groq", "cerebras", "nvidia_nim", "huggingface") if providers[name].configured]
+            clouds = [
+                providers[name]
+                for name in ("openrouter", "groq", "cerebras", "nvidia_nim", "huggingface")
+                if providers[name].configured
+            ]
             self.hybrid = HybridRouter(self.governance, providers["local"], clouds[0] if clouds else None, clouds=clouds)
             self.scripts.local = providers["local"]
             self.scripts.cloud = clouds[0] if clouds else None

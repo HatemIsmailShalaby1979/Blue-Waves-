@@ -67,7 +67,8 @@ LANGUAGE_PACKS: dict[str, dict[str, Any]] = {
                 "The main takeaway is that {topic} rewards patience far more than intensity.",
             ],
             "close": [
-                "That is all the time we have today. Thank you for listening, and we will see you in the next episode about {topic}.",
+                "That is all the time we have today. Thank you for listening, "
+                "and we will see you in the next episode about {topic}.",
                 "We will leave it there. Thanks for joining us for this conversation on {topic}.",
             ],
         },
@@ -254,7 +255,8 @@ LANGUAGE_PACKS: dict[str, dict[str, Any]] = {
                 "Interessant, so habe ich {topic} noch nicht betrachtet.",
             ],
             "example": [
-                "Wenn Menschen zum Beispiel erstmals mit {topic} in Berührung kommen, merken sie oft schon nach wenigen Wochen einen Unterschied.",
+                "Wenn Menschen zum Beispiel erstmals mit {topic} in Berührung kommen, "
+                "merken sie oft schon nach wenigen Wochen einen Unterschied.",
                 "Nehmen wir ein kleines Team, das {topic} ernst genommen und seine Routine komplett umgestellt hat.",
                 "Betrachten Sie {topic} wie das Lernen einer neuen Fähigkeit: erst langsam, dann auf einmal.",
             ],
@@ -303,7 +305,8 @@ LANGUAGE_PACKS: dict[str, dict[str, Any]] = {
                 "Interessante, non avevo mai pensato a {topic} da questa prospettiva.",
             ],
             "example": [
-                "Per esempio, quando le persone incontrano {topic} per la prima volta, notano spesso un cambiamento in poche settimane.",
+                "Per esempio, quando le persone incontrano {topic} per la prima volta, "
+                "notano spesso un cambiamento in poche settimane.",
                 "Pensiamo a un piccolo team che ha preso {topic} sul serio e ha riorganizzato la sua routine.",
                 "Consideri {topic} come l'apprendimento di una nuova abilità: piano all'inizio, poi tutto insieme.",
             ],
@@ -401,7 +404,8 @@ LANGUAGE_PACKS: dict[str, dict[str, Any]] = {
                 "İlginç, {topic} konusunu daha önce bu açıdan düşünmemiştim.",
             ],
             "example": [
-                "Örneğin insanlar {topic} ile ilk kez karşılaştıklarında, değişimi genellikle birkaç hafta içinde fark ederler.",
+                "Örneğin insanlar {topic} ile ilk kez karşılaştıklarında, "
+                "değişimi genellikle birkaç hafta içinde fark ederler.",
                 "Küçük bir ekibin {topic} konusunu ciddiye alıp tüm rutinini yeniden kurduğunu düşünün.",
                 "{topic} konusunu yeni bir beceri öğrenmek gibi düşünün: önce yavaş, sonra birdenbire.",
             ],
@@ -450,7 +454,8 @@ LANGUAGE_PACKS: dict[str, dict[str, Any]] = {
                 "Интересно, я раньше не думал о {topic} с этой стороны.",
             ],
             "example": [
-                "Например, когда люди впервые сталкиваются с {topic}, они обычно замечают изменения уже через несколько недель.",
+                "Например, когда люди впервые сталкиваются с {topic}, "
+                "они обычно замечают изменения уже через несколько недель.",
                 "Представьте небольшую команду, которая отнеслась к {topic} серьёзно и полностью перестроила свой распорядок.",
                 "Относитесь к {topic} как к освоению любого нового навыка: сначала медленно, а потом сразу.",
             ],

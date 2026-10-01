@@ -77,7 +77,10 @@ class ProviderRotationMatrix:
             if capability is None:
                 return False
             if capability.mode == "cloud" and capability.estimated_cents > 0:
-                if monthly_budget_cents <= 0 or self._month_spend_cents + capability.estimated_cents * units > monthly_budget_cents:
+                if (
+                    monthly_budget_cents <= 0
+                    or self._month_spend_cents + capability.estimated_cents * units > monthly_budget_cents
+                ):
                     return False
             usage = self._usage.setdefault(provider, {"daily_used": 0, "monthly_used": 0})
             if capability.daily_quota is not None and usage["daily_used"] + units > capability.daily_quota:
@@ -149,8 +152,14 @@ class ProviderRotationMatrix:
                     "content_types": list(capability.content_types),
                     "daily_used": usage["daily_used"],
                     "monthly_used": usage["monthly_used"],
-                    "daily_remaining": None if capability.daily_quota is None else max(0, capability.daily_quota - usage["daily_used"]),
-                    "monthly_remaining": None if capability.monthly_quota is None else max(0, capability.monthly_quota - usage["monthly_used"]),
+                    "daily_remaining": (
+                        None if capability.daily_quota is None
+                        else max(0, capability.daily_quota - usage["daily_used"])
+                    ),
+                    "monthly_remaining": (
+                        None if capability.monthly_quota is None
+                        else max(0, capability.monthly_quota - usage["monthly_used"])
+                    ),
                 }
             return result
 

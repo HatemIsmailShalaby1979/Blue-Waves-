@@ -135,7 +135,8 @@ def probe_media(toolchain: Toolchain, path: Path) -> dict[str, Any]:
         result = subprocess.run(
             [toolchain.ffprobe, "-v", "error",
              "-show_entries", "format=duration,bit_rate",
-             "-show_entries", "stream=codec_type,codec_name,width,height,channels,sample_rate,r_frame_rate,avg_frame_rate,bit_rate",
+             "-show_entries",
+             "stream=codec_type,codec_name,width,height,channels,sample_rate,r_frame_rate,avg_frame_rate,bit_rate",
              "-of", "json", str(path)],
             capture_output=True, text=True, timeout=20, check=False,
         )
