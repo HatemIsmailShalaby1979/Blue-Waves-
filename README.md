@@ -79,7 +79,7 @@ original date.
 | Version | v0.3.0 (`pyproject.toml`, `src/blue_waves/__init__.py`) | 2026-10-01 |
 
 > [!WARNING]
-> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. GitHub Actions CI is **red** on `main` — both workflows fail at their lint steps and the test step is skipped; the badges above are live and show that state.
+> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the repository contains no `Dockerfile` (checked 2026-10-01: `docker build .` fails with `open Dockerfile: no such file or directory`, and the Docker daemon itself is available), so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. GitHub Actions CI is **red** on `main` — both workflows fail at their lint steps and the test step is skipped; the badges above are live and show that state.
 
 ## Run it
 
