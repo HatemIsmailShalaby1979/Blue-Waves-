@@ -61,6 +61,14 @@ framework's governance contract, with an independent runtime — not shared sour
 - `audit_events` — hash-chained audit trail; every external action consent-gated.
 - SHEPO finance — SHEPO is the finance agent of record: real per-provider costs, CPM projection, break-even, provider ROI.
 
+## Cockpit
+
+The approval queue with a held asset: the owner reviews a real preview before approving or
+rejecting, and nothing publishes until the owner approves. The capture is from a local
+cockpit instance with a demo asset.
+
+![Blue Waves cockpit — pending approval queue with a held asset](docs/cockpit-approvals.png)
+
 ## Production status & test coverage
 
 Stated plainly and dated. This section is last by design. The Snapshot column is the
