@@ -27,8 +27,8 @@
 
 ### Documentation
 - README test count corrected. Earlier revisions of the README said 85 tests, which
-  understated the suite; the figure was raised to 125 and now stands at 163 collected
-  (147 project + 16 vendored).
+  understated the suite; the figure was raised to 125 and now stands at 167 collected
+  (151 project + 16 vendored).
 
 ### Added — 2026-09-30 (YouTube external-video publish)
 - **External-video ingest → unlisted → owner review → public** — `ingest_external_video`

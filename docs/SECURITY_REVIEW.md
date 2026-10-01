@@ -14,7 +14,7 @@
 - `git remote -v`: **No remote configured locally** (repo changed to private 2026-09-21 per `MASTER_STORY.md` / `git ls-remote` verification)
 - `.gitignore` present and clean
 - `pyproject.toml` present (v0.3.0)
-- 85 collected tests pass offline (`pytest`)
+- 167 collected tests pass offline (`pytest`; re-measured 2026-10-01: 151 project + 16 vendored)
 - `ruff check` / `ruff format --check`: clean (per existing repo convention; verified in Helix-Prime core)
 
 ### Dependency & vulnerability
@@ -41,7 +41,7 @@
 - Owner approval required for every external communication
 - Generated previews blocked from publication if missing, empty, or below quality gate
 - No agent approves its own release
-- Cockpit full board (10 panels) active with 10s auto-refresh
+- Cockpit full board (12 panels) active with 10s auto-refresh
 
 ---
 
@@ -56,7 +56,7 @@ This is **not** a production deployment claim. The following are open by design 
 5. **Incident response / on-call ownership** — not documented
 6. **Legal privacy review / GDPR / CCPA compliance** — not reviewed
 7. **External observer audit / independent audit** — not performed
-8. **Production deployment architecture / container build** — container image never built (Docker daemon unavailable during validation)
+8. **Production deployment architecture / container build** — container image never built (the Docker daemon is available; the repository simply contains no `Dockerfile` — `docker build .` fails with `open Dockerfile: no such file or directory`, checked 2026-10-01)
 9. **Signed production evidence / release approval** — `release_approved`: false; `go-no-go.json`: `PENDING-GATE-RUN`
 
 ---
@@ -66,7 +66,7 @@ This is **not** a production deployment claim. The following are open by design 
 Before this repository is promoted as "ready for public publishing," the following must be addressed:
 
 - [x] Internal code review completed (this session)
-- [x] Tests pass (85/85)
+- [x] Tests pass (167/167)
 - [x] Dependencies audited (clean, per convention)
 - [x] Secrets management documented (AES-256-GCM + master password)
 - [x] Governance model documented (fail-closed, owner-controlled)
