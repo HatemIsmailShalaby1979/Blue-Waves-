@@ -25,6 +25,11 @@
   fails loudly with per-provider reasons (ledger `music_generation_failed`); the
   cockpit library shows the generating provider + fallback chain per asset.
 
+### Documentation
+- README test count corrected. Earlier revisions of the README said 85 tests, which
+  understated the suite; the figure was raised to 125 and now stands at 163 collected
+  (147 project + 16 vendored).
+
 ## 0.3.0 — 2026-09-04 (Quality Sprint)
 
 Maximize generated-media quality to compete with real YouTube creators: video-use

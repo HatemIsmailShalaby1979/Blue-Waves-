@@ -75,7 +75,7 @@ Stated plainly and dated. This section is last by design.
 | Version | v0.3.0 | 2026-09-05 |
 
 > [!WARNING]
-> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. Earlier revisions of this file said 85 tests, which understated it; the 125 figure is the current collection.
+> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the sandbox Docker daemon was unavailable during validation, so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner.
 
 ## Run it
 
