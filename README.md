@@ -54,7 +54,7 @@ framework's governance contract, with an independent runtime — not shared sour
 
 ## Architecture
 
-- `cockpit_ui.py` — 11 navigation panels showing quality metrics, approval status, audit chain.
+- `cockpit_ui.py` — 12 navigation panels showing quality metrics, approval status, audit chain.
 - Scheduler — `tick()` / `run_automated_cycle()`: queue, generate, quality gate, `awaiting_owner`, retries up to 3, ledger-logged.
 - Quality gates — `ffprobe` + FFT + LUFS + silence, hard thresholds.
 - Provider rotation — local plus cloud-ready; cloud providers fail closed until approved.
