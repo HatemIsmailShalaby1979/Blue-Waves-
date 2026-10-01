@@ -8,7 +8,7 @@
 ![Pylint](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions/workflows/pylint.yml/badge.svg)
 ![Python application](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions/workflows/python-app.yml/badge.svg)
 ![Licence](https://img.shields.io/badge/licence-MIT-blue)
-![Python](https://img.shields.io/badge/python-3.12%2B-3776ab)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-3776ab)
 
 </div>
 
@@ -78,7 +78,7 @@ original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 163 collected (147 project + 16 vendored), all pass — the YouTube external-video publish feature added 38 project tests. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
+| Tests | 167 collected (151 project + 16 vendored), all pass (re-measured 2026-10-01) — the YouTube external-video publish feature added 38 project tests, and 3 more cover the Ken Burns render paths. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
 | CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
@@ -92,9 +92,22 @@ original date.
 
 ## Run it
 
+Requires Python 3.10+ and ffmpeg on PATH (local mastering). Install the package
+itself — there is no `requirements.txt`; `pyproject.toml` is the dependency source
+of truth:
+
 ```bash
-pip install -r requirements.txt
-python cockpit_ui.py
+pip install -e .
+
+# Governed CLI (console script installed by the package):
+blue-waves --help
+blue-waves preflight --video /path/to/video.mp4
+
+# Same CLI via the module entry point:
+python -m blue_waves --help
+
+# Cockpit web UI (serves http://127.0.0.1:8420):
+python start_cockpit.py
 ```
 
 Provider APIs (Suno, ElevenLabs, Kling, Seedance) and YouTube OAuth credentials are
