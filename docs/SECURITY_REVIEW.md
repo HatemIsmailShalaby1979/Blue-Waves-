@@ -3,7 +3,7 @@
 **Status:** Internal technical review completed. External audit, certified isolation, legal privacy review — **not yet completed** (see open gates below).
 **Reviewed:** 2026-09-05 (current session)
 **Method:** Direct command execution, file inspection, test execution, dependency audit — not agent summary.
-**Founder:** Hatem Ismail Shalaby — solo build, career-switch, self-educated, no external team.
+Built by Hatem Ismail Shalaby, Contact Centre Operations & AI Implementation Lead | WFM & CX Transformation. Background: https://github.com/HatemIsmailShalaby1979
 
 ---
 
@@ -90,4 +90,4 @@ If you want to verify, run the suite. Inspect `DECISIONS.md`. Read `PRODUCTION_F
 
 ---
 
-*Review completed: 2026-09-05. Reviewer: solo engineer / founder. Next step: close open gates or document why they remain open.*
+*Review completed: 2026-09-05. Reviewer: solo engineer. Next step: close open gates or document why they remain open.*
