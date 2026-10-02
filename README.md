@@ -78,10 +78,10 @@ original date.
 
 | Evidence | Value | Snapshot |
 |---|---|---|
-| Tests | 167 collected (151 project + 16 vendored), all pass (re-measured 2026-10-01) — the YouTube external-video publish feature added 38 project tests, and 3 more cover the Ken Burns render paths. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-01 |
+| Tests | 167 passed across sequential chunks (151 project + 16 vendored; re-measured 2026-10-02) — the YouTube external-video publish feature added 38 project tests, and 3 more cover the Ken Burns render paths. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-02 |
 | CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
-| End-to-end video publish | Verified (`NHXdNQzF5m0`) | 2026-09-05 |
+| End-to-end video publish | Implemented; upload path exercised once (video NHXdNQzF5m0, 2026-09-05). Public visibility not verified: oEmbed returns 403 (re-checked 2026-09-30). | 2026-09-05; re-checked 2026-09-30 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
 | Quality gates | `ffprobe` + FFT + LUFS + silence, hard thresholds | 2026-09-05 |
 | SHEPO finance | Real per-provider costs, CPM projection, break-even, provider ROI | 2026-09-05 |
