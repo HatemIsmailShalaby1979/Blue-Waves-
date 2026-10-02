@@ -79,7 +79,7 @@ original date.
 | Evidence | Value | Snapshot |
 |---|---|---|
 | Tests | 167 passed across sequential chunks (151 project + 16 vendored; re-measured 2026-10-02) — the YouTube external-video publish feature added 38 project tests, and 3 more cover the Ken Burns render paths. Cockpit E2E flake addressed (client HTTP timeout 30s → 180s) | 2026-10-02 |
-| CI (GitHub Actions) | **Red** — `Pylint` and `Python application` both fail on `main` at their lint steps; the pytest step is skipped | 2026-10-01 |
+| CI (GitHub Actions) | **Green** on `main` — `Pylint` (run 36946472204) and `Python application` (run 36946472214) both pass at `bbc3b56`, 2026-10-02 | 2026-10-02 |
 | YouTube OAuth | Complete, client configured, test user active | 2026-09-05 |
 | End-to-end video publish | Implemented; upload path exercised once (video NHXdNQzF5m0, 2026-09-05). Public visibility not verified: oEmbed returns 403 (re-checked 2026-09-30). | 2026-09-05; re-checked 2026-09-30 |
 | Podcast RSS | Valid, iTunes-compatible RSS 2.0 | 2026-09-05 |
@@ -88,7 +88,7 @@ original date.
 | Version | v0.3.0 (`pyproject.toml`, `src/blue_waves/__init__.py`) | 2026-10-01 |
 
 > [!WARNING]
-> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the repository contains no `Dockerfile` (checked 2026-10-01: `docker build .` fails with `open Dockerfile: no such file or directory`, and the Docker daemon itself is available), so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. GitHub Actions CI is **red** on `main` — both workflows fail at their lint steps and the test step is skipped; the badges above are live and show that state.
+> Revenue is **$0**. The studio is pre-revenue; the SHEPO projection is a model, not a receipt. The container image has **never been built** — the repository contains no `Dockerfile` (checked 2026-10-01: `docker build .` fails with `open Dockerfile: no such file or directory`, and the Docker daemon itself is available), so static packaging tests cover the surface. Nine production-only gates remain red by design (no certified data isolation, no external observer audit, no legal privacy review — the nine are enumerated in `docs/SECURITY_REVIEW.md`). No external audit, no signed security review, no assigned on-call owner. GitHub Actions CI is **green** on `main` (runs 36946472204 / 36946472214, `bbc3b56`, 2026-10-02); the badges above are live and show that state.
 
 ## Run it
 
