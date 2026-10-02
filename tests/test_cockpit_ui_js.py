@@ -37,7 +37,7 @@ def _extract_script(html: str) -> str:
 
 def test_dashboard_inline_script_is_valid_js() -> None:
     script = _extract_script(DASHBOARD_HTML)
-    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as handle:
         handle.write(script)
         path = Path(handle.name)
     try:
