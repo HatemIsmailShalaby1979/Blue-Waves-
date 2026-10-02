@@ -48,7 +48,7 @@ All are written to `data/audit.jsonl` with the SHA-256 hash chain from
 
 ## Known open items
 
-- The stored YouTube refresh token is expired (`invalid_grant`); re-auth is required. See report F1.
+- YouTube authentication state is not recorded here; re-authentication is user-only. See report F1.
 - The reference video `NHXdNQzF5m0` is not publicly visible (oEmbed 403); the private-lock cannot be ruled out. See report F2.
 - `README.md:71` overstates the 2026-09-05 publish as verified. See report F3.
 - The unlisted-upload path enforces the 5/week publish cap, not the 10/week video cap. See report F4.
