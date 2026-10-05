@@ -2,6 +2,21 @@
 
 # Blue Waves
 
+
+<!-- badges:start -->
+
+[![CI](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions/workflows/Pylint/badge.svg)](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/actions)
+![licence](https://img.shields.io/badge/licence-MIT-blue)
+[![last commit](https://img.shields.io/github/last-commit/HatemIsmailShalaby1979/Blue-Waves-)](https://github.com/HatemIsmailShalaby1979/Blue-Waves-/commits/main)
+![status](https://img.shields.io/badge/ci-success-brightgreen?label=success%20(2026-10-02))
+
+*Measured 2026-10-06 — CI **success**; head `c2dfc0c` (2026-10-02); Python.*
+
+<!-- No static test or coverage count is shown here: a frozen
+     number decays silently. Run the suite for a current figure;
+     the CI badge above is the live status. -->
+<!-- badges:end -->
+
 **A multi-format content studio and the first commercial vertical on Helix Codex.**
 
 ![Status](https://img.shields.io/badge/status-pre--revenue-yellow)
